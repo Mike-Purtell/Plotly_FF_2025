@@ -1,82 +1,90 @@
 import polars as pl
-pl.Config().set_tbl_rows(20)
 import plotly.express as px
-from dash import Dash, dcc, html, Input, Output, jupyter_dash
+from dash import Dash, dcc, html, Input, Output
 import dash_bootstrap_components as dbc
 import dash_ag_grid as dag
-
-#-------------------------------------------------------------------------------
-#    This dashboard shows international agreements between Argentina and other
-#    countries, grouped by decade. Selecting 1 or more decades will invoke a bar
-#    chart with number of agreements by country, a map showing countries from
-#    selected decade, and a table of the agreements
-#-------------------------------------------------------------------------------
 '''
-    This dashboard shows international agreements between Argentina and other
-    countries, grouped by decade. Selecting 1 or more decades will invoke a bar
-    chart with number of agreements by country, a map showing countries from
-    selected decade, and a table of the agreements
+    This dashboard shows international treaties with Argentina. Data grouped by 
+    decade are visualized with a bar chart, a world map and a dash AG table. 
 '''
 
-#-------------------------------------------------------------------------------
-#    constants
-#-------------------------------------------------------------------------------
+#----- DEFINE CONSTANTS---------------------------------------------------------
 citation = (
-    'Santander Javier I., La distribución de tratados como reflejo de la<' +
-    'política exterior , Revista de Investigación en Política Exterior<' +
+    'Santander Javier I., La distribución de tratados como reflejo de la ' +
+    'política exterior , Revista de Investigación en Política Exterior ' +
     'Argentina, Volumen 3, Número 6, Septiembre - Diciembre 2023.'
 )
-style_space = {'border': 'none', 'height': '5px', 'background': 'linear-gradient(to right, #007bff, #ff7b00)', 'margin': '10px 0'}
+style_space = {
+    'border': 'none', 
+    'height': '5px', 
+    'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
+    'margin': '10px 0'
+    }
 
+# these are the columns to show in Dash AG table, in listed order
+table_cols = ['YEAR', 'Title', 'PARTNER', 'TREATIES', 'REGION']
 
-
-#-------------------------------------------------------------------------------
-#    functions
-#-------------------------------------------------------------------------------
-def create_bar_plot(df_decade):
-    print(df_decade)
-    decade = df_decade['DECADE'].to_list()[0]
+#----- DEFINE FUNCTIONS---------------------------------------------------------
+def create_bar_plot(df_decade, decade):
     fig = px.bar(
         df_decade
             .unique('PARTNER')
-            .sort('PARTNER_COUNT')
+            .sort(['TREATIES', 'PARTNER'], descending =[False, True])
             .tail(10)
             , 
-        x='PARTNER_COUNT', 
+        x='TREATIES', 
         y='PARTNER', 
-        # orientation='h',
-        #markers=True,
         title=(
-            f'TRADE AGREEMENTS {decade}<br>' +
-            f'<sup>Top 10 or Fewer</sup>'
+            f"Argentina's Treaty Partners in the {decade}".upper() +
+            f'<br><sup>Top 10 or Fewer</sup>'
         ),
         template='simple_white',
-        # height=400, width=600,
-        # line_shape='spline'
+        text_auto=True,   # superimpose data on each bar
     )
-    fig.update_layout(
-        xaxis_title=f'AGREEMENT COUNT',
-        yaxis_title='',
+    fig.update_layout(yaxis_title='')  # Y-axis is obvious, no label needed
+    fig.update_traces(  # disable hover traces on the bar chart
+        hovertemplate = None,
+        hoverinfo='skip'
     )
     return fig
 
+def get_world_map(df_decade, decade):
+    fig = px.choropleth(
+        data_frame=df_decade,
+        locations='PARTNER',
+        locationmode='country names',
+        color='TREATIES',
+        color_continuous_scale='viridis',
+        custom_data=['PARTNER', 'DECADE', 'TREATIES'],
+        title=f"Argentina's Treaty Partners in the {decade}".upper(),
+        projection='equirectangular',
+    )
+    fig.update_traces(
+        hovertemplate="<br>".join([
+            "%{customdata[0]} %{customdata[1]}",
+            "%{customdata[2]} Treaty(s)",
+        ])
+    )
+    fig.update_layout(
+        boxgap=0.25,
+        height=500,
+        margin=dict(l=10, r=0, b=10, t=100), # , pad=50),
+        coloraxis_showscale=False # turn off the legend/color_scale 
+    )
+    return fig
 
-def get_table_data(df_decade):
+def get_table_data(df_decade, decade):
     df_table = (
         df_decade
-        .select(pl.col('YEAR', 'Title', 'PARTNER','PARTNER_COUNT', 'REGION'))
+        .select(pl.col('YEAR', 'Title', 'PARTNER','TREATIES', 'REGION'))
         .sort(
-            ['PARTNER_COUNT', 'YEAR', 'PARTNER', 'Title'],
+            ['TREATIES', 'YEAR', 'PARTNER', 'Title'],
             descending=[True, False, False, False]
         )
     )
-    print(f'{df_table = }')
     return df_table
 
-
-#-------------------------------------------------------------------------------
-#    load and clean data
-#-------------------------------------------------------------------------------
+#----- LOAD AND CLEAN DATA -----------------------------------------------------
 df = (
     pl.scan_csv('Argentina-bilateral-instruments-1810-2023.csv')
     .select(
@@ -91,17 +99,13 @@ df = (
     )
     .drop_nulls('PARTNER')
     .with_columns(
-        PARTNER_COUNT = pl.col('PARTNER').count().over('DECADE', 'PARTNER')
+        TREATIES = pl.col('PARTNER').count().over('DECADE', 'PARTNER'),
     )
     .sort('DECADE', 'PARTNER')
     .collect()
 )
-print(df)
-
 
 drop_down_list = sorted(list(set(df['DECADE'])))
-
-table_cols = ['YEAR', 'Title', 'PARTNER', 'PARTNER_COUNT', 'REGION']
 grid = dag.AgGrid(
     rowData=[],
     columnDefs=[{"field": i, 'filter': True, 'sortable': True} for i in table_cols],
@@ -109,15 +113,13 @@ grid = dag.AgGrid(
     id='data_table'
 )
 
-#-------------------------------------------------------------------------------
-#    Dash App
-#-------------------------------------------------------------------------------
+#----- DASH APP ----------------------------------------------------------------
 app = Dash(external_stylesheets=[dbc.themes.SANDSTONE])
 
 app.layout = dbc.Container([
     html.Hr(style=style_space),
     html.H2(
-        'Argentinian Trade Agreements by Decade', 
+        'International Treaties with Argentina by Decade', 
         style={
             'text-align': 'left'
         }
@@ -138,37 +140,42 @@ app.layout = dbc.Container([
         html.Hr(style=style_space)
     ]),
 
-    dbc.Row([dcc.Dropdown(drop_down_list, drop_down_list[0], id='my_dropdown'),]),
- 
+    dbc.Row(
+        [dcc.Dropdown(
+            drop_down_list,       # list of choices
+            drop_down_list[0],    # use first item on list as default
+            id='my_dropdown', 
+            style={'width': '50%'}),
+        ],
+    ),
+    
     html.Div(id='dd-output-container'),
 
     dbc.Row([
-        #dbc.Col(dcc.Graph(id='world_map'), width=4),
-        dbc.Col(dcc.Graph(id='bar_plot'), width=4),
+        dbc.Col(dcc.Graph(id='bar_plot')),    
+        dbc.Col([grid]),
+
     ]),
 
     dbc.Row([
-        dbc.Col([grid]), # , width=4),
+        dbc.Col(dcc.Graph(id='world_map'),),  # width=4),
     ])
-
 ])
 
 @app.callback(
         Output('bar_plot', 'figure'),
-        # Output('world_map', 'figure'),
+        Output('world_map', 'figure'),
         Output('data_table', 'rowData'),
         Input('my_dropdown', 'value')
 )
-def update_dashboard(selected_decade):
-    df_selected = df.filter(pl.col('DECADE') == selected_decade)
-    bar_plot = create_bar_plot(df_selected)
-    df_table = get_table_data(df_selected)
-    # world_map = get_world_map(df_selected)
 
-    print(f'{df_selected = }')
-    
-    return bar_plot, df_table.to_dicts()
+def update_dashboard(decade):
+    df_selected = df.filter(pl.col('DECADE') == decade)
+    bar_plot = create_bar_plot(df_selected, decade)
+    df_table = get_table_data(df_selected, decade)
+    world_map = get_world_map(df_selected, decade)
+    return bar_plot, world_map, df_table.to_dicts()
 
-
+#----- RUN THE APP -------------------------------------------------------------
 if __name__ == "__main__":
     app.run(debug=True)
