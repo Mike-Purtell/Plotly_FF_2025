@@ -1,99 +1,161 @@
-from dash import Dash, dcc
+from dash import Dash, dcc, html, Input, Output
 import dash_bootstrap_components as dbc
-# import dash_ag_grid as dag
 import polars as pl
 import plotly.graph_objects as go
-# ASK Adam why original code had graph_objs instead of graph_objects??? 
-
 # Download CSV sheet at: 
 # https://drive.google.com/file/d/1EoFTpSJOIYmVzemoMLj7vMTqeM1zMy0o/view?usp=sharing
+
+citation = (
+   'Source   : Prevalence of processed foods in major US grocery stores ' +
+   'Authors: Babak Ravandi, Gordana Ispirova, Michael Sebek, Peter Mehler, ' +
+    'Albert-László Barabási and Giulia Menichetti ' +
+    'journal: Nature Food, 2025: dio={10.1038/s43016-024-01095-7} ' +
+    'url = {https://www.nature.com/articles/s43016-024-01095-7}'
+)
+style_space = {
+    'border': 'none', 
+    'height': '5px', 
+    'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
+    'margin': '10px 0'
+    }
 
 df = pl.read_csv('GroceryDB_foods.csv')
 df_filtered = (
     df
-    .select(  # choose and re-name columns to keep, clean up CATEGORY DATA 
-      CATEGORY=pl.col('harmonized single category')
-                .str.to_titlecase()
-                .str.replace_all('-', ' ')
-                .str.replace('Milk Milk Substitute', 'Milk or Substitute'),
-      PROTEIN=pl.col('Protein'),
-      FAT_TOTAL=pl.col('Total Fat'),
-      CARBS=pl.col('Carbohydrate'),
-      SUGAR_TOTAL=pl.col('Sugars, total'),
-      DIETARY_FIBER=pl.col('Fiber, total dietary'),
-      CALCIUM=pl.col('Calcium'),
-      IRON=pl.col('Iron'),
-      SODIUM=pl.col('Sodium'),
-      VITAMIN_C=pl.col('Vitamin C'),
-      CHOLESTEROL=pl.col('Cholesterol'),
-      SAT_FATTY_ACIDS_TOT=pl.col('Fatty acids, total saturated'),
-      VITAMIN_A=pl.col('Total Vitamin A'),     
+    .rename({col: col.upper() for col in df.columns})
+    .with_columns(
+       CATEGORY=pl.col('HARMONIZED SINGLE CATEGORY')
+        .str.to_titlecase()
+        .str.replace_all('-', ' ')
+        .str.replace('Milk Milk Substitute', 'Milk or Substitute'),
+      FAT_TOTAL=pl.col('TOTAL FAT'),  #.series.log10(),
+      CARBS=pl.col('CARBOHYDRATE'),
+      SUGAR_TOTAL=pl.col('SUGARS, TOTAL'),
+      DIETARY_FIBER=pl.col('FIBER, TOTAL DIETARY'),
+      SAT_FATTY_ACIDS_TOT=pl.col('FATTY ACIDS, TOTAL SATURATED'),
+      VITAMIN_A=pl.col('TOTAL VITAMIN A'),  
+      VITAMIN_C=pl.col('VITAMIN C'),   
     )
-    # .filter(
-    #     pl.col('CATEGORY')
-    #     .is_in(['drink-tea','drink-soft-energy-mixes','drink-juice','drink-shakes-other'])
-    # )
+    .select(  # choose and re-name columns to keep, clean up CATEGORY DATA     
+      'CATEGORY', 'CALCIUM', 'CARBS',  'CHOLESTEROL', 'DIETARY_FIBER', 
+      'FAT_TOTAL', 'IRON', 'PROTEIN', 'SAT_FATTY_ACIDS_TOT', 'SODIUM', 
+      'SUGAR_TOTAL', 'VITAMIN_A', 'VITAMIN_C'     
+    )
     .group_by('CATEGORY', maintain_order=True)
     .mean()
 )
+
 # these lists will be used as callback choices
 category_list = sorted(df_filtered['CATEGORY'].unique().to_list())
-print(f'{len(category_list) = }')
-print(category_list)
-
-nutrition_list = sorted([c for c in df.columns if c!= 'CATEGORY'])
-print(f'{len(nutrition_list) = }')
-print(nutrition_list)
-
-print(df_filtered)
-print(1/0)
+category_defaults = [
+    'Drink Shakes Other', 'Drink Juice', 'Drink Tea', 'Drink Soft Energy Mixes']
+nutrition_list = sorted([c for c in df_filtered.columns if c!= 'CATEGORY'])
+nutrient_defaults = ['DIETARY_FIBER', 'SAT_FATTY_ACIDS_TOT']
 
 #----- DEFINE FUNCTIONS---------------------------------------------------------
-def make_fig():
-  fig = go.Figure()
-  fig.add_trace(go.Scatterpolar(
-        r=df_filtered['Fiber, total dietary'],
-        theta=df_filtered['harmonized single category'],
-        fill='toself',
-        name='Dietary Fiber'
-  ))
-  fig.add_trace(go.Scatterpolar(
-        r=df_filtered['Fatty acids, total saturated'],
-        theta=df_filtered['harmonized single category'],
-        fill='toself',
-        name='Saturated Fatty Acids'
-  ))
+def make_fig(df_filtered, selected_cats, selected_nutrients):
+    df_selected = (
+        df_filtered
+        .filter(pl.col('CATEGORY').is_in(selected_cats))
+        .select(['CATEGORY'] + selected_nutrients)
+    )
+    for col in selected_nutrients:
+        df_selected = (
+            df_selected
+            # .with_columns(
+            #     pl.col(selected_nutrients).log10()
+            # )
+        )
+    fig = go.Figure()
+    for nutrient in selected_nutrients:
+        fig.add_trace(go.Scatterpolar(
+            r=df_selected[nutrient],
+            theta=df_selected['CATEGORY'],
+            fill='toself',
+            name=nutrient
+        ))
 
-  fig.update_layout(
-    polar=dict(
-      radialaxis=dict(
-        visible=True,
-      )),
-    showlegend=True,
-      legend=dict(
-          title=dict(
-              text="Average Ingredient Count"
-          )
-      )
-  )
+    fig.update_layout(
+        template='simple_white',
+        polar=dict(
+            radialaxis=dict(
+            visible=False,
+            showticklabels = False,
+            )),
+        showlegend=True,
+            legend=dict(
+                title=dict(
+                    text="Average Ingredient Count"
+                )
+        ),
+    )
+    return fig
 
-app.layout = [
-    dcc.Graph(figure=fig)
-]
+app = Dash(external_stylesheets=[dbc.themes.SANDSTONE])
+app.layout = dbc.Container([
+    html.Hr(style=style_space),
+    html.H2(
+        'Scatterpolar Nutrition', 
+        style={
+            'text-align': 'left'
+        }
+    ),
+    html.Hr(style=style_space),
+    html.Div([
+        html.P(
+            f'Citation: {citation}',
+            ),
+        html.Hr(style=style_space)
+    ]),
+    html.Hr(style=style_space),
+    html.Div([
+        html.P(
+            f'Use Left pulldown to select category, right pull down to select nutrients',
+            ),
+        html.Hr(style=style_space)
+    ]),
+
+    dbc.Row([
+        dbc.Col(
+        [dcc.Dropdown(       
+            category_list,       
+            category_defaults,   
+            id='cat_dropdown', 
+            multi=True,
+            ),
+        ]),
+        dbc.Col([dcc.Dropdown(       
+            nutrition_list,    
+            nutrient_defaults,    
+            id='nutrient_dropdown', 
+            multi=True,
+        ),]),
+    ]),
+   
+    html.Div(id='dd-output-container2'),
+
+    dbc.Row([dbc.Col(dcc.Graph(id='scatterpolar_fig')),])
+])
 
 @app.callback(
         Output('scatterpolar_fig', 'figure'),
-        Input('lang_dropdown', 'value'),
-        Input('lang_dropdown', 'value'),
+        Input('cat_dropdown', 'value'),
+        Input('nutrient_dropdown', 'value'),
 )
-def update_dashboard(selected_values):
-    df_selected = df.select(pl.col('DATE', selected_values[0], selected_values[1]))
-    line_plot = create_line_plot(selected_values[0], selected_values[1])
-    scatter_plot  = create_scatter_plot(selected_values[0], selected_values[1])
-    return line_plot, scatter_plot, df_selected.to_dicts()
+def update_dashboard(selected_cats, selected_nutrients):
+    if not type(selected_cats) is list:
+        selected_cats = [selected_cats]
+    if not type(selected_nutrients) is list:
+        selected_nutrients = [selected_nutrients]
 
-app = Dash(external_stylesheets=[dbc.themes.SANDSTONE])
+    print(f'{type(selected_cats) = }')
+    print(f'{type(selected_nutrients) = }')
+    print(f'{selected_cats = }')
+    print(f'{selected_nutrients = }')
+    scatter_polar = make_fig(df_filtered, selected_cats, selected_nutrients)
+    return scatter_polar
 
 #----- RUN THE APP -------------------------------------------------------------
 if __name__ == "__main__":
+    app.run(debug=True)
     app.run(debug=True)
