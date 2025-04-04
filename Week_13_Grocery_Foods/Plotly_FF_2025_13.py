@@ -18,8 +18,7 @@ style_space = {
     'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
     'margin': '10px 0'
     }
-
-df = pl.read_csv('GroceryDB_foods.csv')
+df=pl.read_csv('GroceryDB_foods.csv')
 df_filtered = (
     df
     .rename({col: col.upper() for col in df.columns})
@@ -36,7 +35,7 @@ df_filtered = (
       VITAMIN_A=pl.col('TOTAL VITAMIN A'),  
       VITAMIN_C=pl.col('VITAMIN C'),   
     )
-    .select(  # choose and re-name columns to keep, clean up CATEGORY DATA     
+    .select(   
       'CATEGORY', 'CALCIUM', 'CARBS',  'CHOLESTEROL', 'DIETARY_FIBER', 
       'FAT_TOTAL', 'IRON', 'PROTEIN', 'SAT_FATTY_ACIDS_TOT', 'SODIUM', 
       'SUGAR_TOTAL', 'VITAMIN_A', 'VITAMIN_C'     
@@ -44,7 +43,6 @@ df_filtered = (
     .group_by('CATEGORY', maintain_order=True)
     .mean()
 )
-
 # these lists will be used as callback choices
 category_list = sorted(df_filtered['CATEGORY'].unique().to_list())
 category_defaults = [
@@ -59,22 +57,14 @@ def make_fig(df_filtered, selected_cats, selected_nutrients):
         .filter(pl.col('CATEGORY').is_in(selected_cats))
         .select(['CATEGORY'] + selected_nutrients)
     )
-    for col in selected_nutrients:
-        df_selected = (
-            df_selected
-            # .with_columns(
-            #     pl.col(selected_nutrients).log10()
-            # )
-        )
     fig = go.Figure()
     for nutrient in selected_nutrients:
         fig.add_trace(go.Scatterpolar(
             r=df_selected[nutrient],
             theta=df_selected['CATEGORY'],
             fill='toself',
-            name=nutrient
+            name=nutrient,
         ))
-
     fig.update_layout(
         template='simple_white',
         polar=dict(
@@ -88,6 +78,8 @@ def make_fig(df_filtered, selected_cats, selected_nutrients):
                     text="Average Ingredient Count"
                 )
         ),
+        margin=dict(l=200, r=20, t=0, b=20),
+        height=900, width=900,
     )
     return fig
 
@@ -114,7 +106,6 @@ app.layout = dbc.Container([
             ),
         html.Hr(style=style_space)
     ]),
-
     dbc.Row([
         dbc.Col(
         [dcc.Dropdown(       
@@ -134,7 +125,19 @@ app.layout = dbc.Container([
    
     html.Div(id='dd-output-container2'),
 
-    dbc.Row([dbc.Col(dcc.Graph(id='scatterpolar_fig')),])
+    dbc.Row(
+        [
+            dbc.Col(
+                dcc.Graph(
+                    id='scatterpolar_fig',
+                    style={
+                        'width': '75vh', 
+                        'height': '75vh', 
+                    },
+                ), 
+            ),
+        ]
+    )
 ])
 
 @app.callback(
@@ -143,19 +146,15 @@ app.layout = dbc.Container([
         Input('nutrient_dropdown', 'value'),
 )
 def update_dashboard(selected_cats, selected_nutrients):
+    # call back returns string if 1 item is selected, list if multiple items 
+    # are selected. The make_fig requires lists, next 4 lines take care of this
     if not type(selected_cats) is list:
         selected_cats = [selected_cats]
     if not type(selected_nutrients) is list:
         selected_nutrients = [selected_nutrients]
-
-    print(f'{type(selected_cats) = }')
-    print(f'{type(selected_nutrients) = }')
-    print(f'{selected_cats = }')
-    print(f'{selected_nutrients = }')
     scatter_polar = make_fig(df_filtered, selected_cats, selected_nutrients)
     return scatter_polar
 
 #----- RUN THE APP -------------------------------------------------------------
 if __name__ == "__main__":
-    app.run(debug=True)
     app.run(debug=True)
