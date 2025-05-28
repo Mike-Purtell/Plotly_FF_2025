@@ -58,17 +58,20 @@ df_year = (
 # print('df_year', df_year)
 df_year_diff = (
     df_year
-        .with_columns(
-            pl.col(
-                'FOSSIL', 'SOLID', 'LIQUID', 'GAS', 
-                'CEMENT', 'FLARING', 'PER_CAP'
-            ).diff()
-        )
+    .lazy()
+    .with_columns(
+        pl.col(
+            'FOSSIL', 'SOLID', 'LIQUID', 'GAS', 
+            'CEMENT', 'FLARING', 'PER_CAP'
+        ).diff()
+    )
+    .collect()
 )
 # print('df_year_diff', df_year_diff)
 
 df_decade = (
     df_year
+    .lazy()
     .with_columns(
          DECADE = pl.col('YEAR').str.slice(0,3) +  pl.lit("0's")
     )
@@ -83,6 +86,7 @@ df_decade = (
         pl.col('PER_CAP').sum(),
     )
     .sort('DECADE')
+    .collect()
 )
 # print('df_decade', df_decade)
 
@@ -112,6 +116,50 @@ def get_state_card_text(selected_state):
 def get_dam_table(selected_state):
     pass
 
+def get_corr_card_slope(corr_x, corr_y, group_by):
+    if group_by == 'YEAR':
+        df_plot = df_year.drop_nulls([corr_x, corr_y])
+    if group_by == 'DECADE':
+        df_plot = df_decade.drop_nulls([corr_x, corr_y])
+    slope = stats.linregress(df_plot[corr_x], df_plot[corr_y]).slope
+    print(f'{slope = }')
+    return slope
+
+def get_corr_card_intercept(corr_x, corr_y, group_by):
+    if group_by == 'YEAR':
+        df_plot = df_year.drop_nulls([corr_x, corr_y])
+    if group_by == 'DECADE':
+        df_plot = df_decade.drop_nulls([corr_x, corr_y])
+    intercept = stats.linregress(df_plot[corr_x], df_plot[corr_y]).intercept
+    print(f'{intercept = }')
+    return intercept
+
+def get_corr_card_r2(corr_x, corr_y, group_by):
+    if group_by == 'YEAR':
+        df_plot = df_year.drop_nulls([corr_x, corr_y])
+    if group_by == 'DECADE':
+        df_plot = df_decade.drop_nulls([corr_x, corr_y])
+    r2 = stats.linregress(df_plot[corr_x], df_plot[corr_y]).rvalue**2
+    print(f'{r2 = }')
+    return r2
+
+def get_corr_card_stderr(corr_x, corr_y, group_by):
+    if group_by == 'YEAR':
+        df_plot = df_year.drop_nulls([corr_x, corr_y])
+    if group_by == 'DECADE':
+        df_plot = df_decade.drop_nulls([corr_x, corr_y])
+    stderr = stats.linregress(df_plot[corr_x], df_plot[corr_y]).stderr
+    print(f'{stderr = }')
+    return stderr
+
+def get_corr_card_i_stderr(corr_x, corr_y, group_by):
+    if group_by == 'YEAR':
+        df_plot = df_year.drop_nulls([corr_x, corr_y])
+    if group_by == 'DECADE':
+        df_plot = df_decade.drop_nulls([corr_x, corr_y])
+    intercept_stderr = stats.linregress(df_plot[corr_x], df_plot[corr_y]).intercept_stderr
+    print(f'{intercept_stderr = }')
+    return intercept_stderr
 
 def get_data_plot(data_type, group_by, graph_type):
     if (data_type, group_by) == ('DATA', 'YEAR'):
@@ -183,122 +231,9 @@ def get_corr_plot(corr_x, corr_y, group_by):
         title_text=f'<b>CORRELATION PLOT BY {group_by}</b>',
         xaxis=dict(title=dict(text=f'{corr_x}')),
         yaxis=dict(title=dict(text=f'{corr_y}')),
-    )
-
-    fig.add_annotation(
-        x = 0.05, xref ='paper',
-        y = 0.95, yref ='paper',
-        text=(
-            '<b>Regression Stats:</b><br>' +
-            f'   Slope = {regression_params.slope:.3f}<br>' +
-            f'   Y-Intercept = {regression_params.intercept:.3f}<br>' +
-            f'   Correlation = {regression_params.rvalue**2:.3f} (Pearson r<sup>2</sup>)<br>' +
-            f'   Slope Std Error = {regression_params.stderr:.3f}<br>' +
-            f'   Intercept Std Error = {regression_params.intercept_stderr:.3f}<br>'
-        ),
-        align='left',
-        showarrow=False
+        showlegend=False,
     )
     return fig
-
-# def get_state_stat(df, param, col):
-#     return(
-#         df
-#         .filter(pl.col('STATISTIC') == param)
-#         [col]
-#         [0]
-#     )
-
-# def get_scatter_map(state):
-#     df_state = (
-#         df
-#         .filter(pl.col('STATE') == state)
-#         .select('STATE', 'LONG', 'LAT', 'DECADE_COMP','MAX_STG_ACR_FT')
-#         .sort(['DECADE_COMP', 'MAX_STG_ACR_FT'])
-#     )
-#     state_zoom = 4  # default. following code changes zoom for listed states
-#     if state in ['Alaska']:
-#         state_zoom = 2
-#     elif state in [ 'Texas']:
-#          state_zoom = 3
-#     elif state in ['Connecticut', 'Louisiana', 'Massachusetts', 'New Jersey', ]:
-#         state_zoom = 5
-#     elif state in ['Delaware', 'Rhode Island','Puerto Rico']:
-#         state_zoom = 7
-#     elif state in ['Guam']:
-#         state_zoom = 8
-#     scatter_map = px.scatter_map(  # map libre
-#         df_state,
-#         lat='LAT',
-#         lon='LONG',
-#         zoom=state_zoom,
-#         color='DECADE_COMP',
-#     )
-#     scatter_map.update_layout(legend_title = '<b>Completed</b>')
-#     return(scatter_map)
-
-# def get_top_10_bar(state):
-#     df_state = (
-#         df
-#         .filter(pl.col('STATE') == state)
-#         .select(['DAM', 'MAX_STG_ACR_FT', 'MAX_DISCHRG_CUB_FT_SEC'])
-#         .sort('MAX_STG_ACR_FT', descending=True)
-#         .with_columns(  # split the dam name inot words, only keep 1st 5
-#             DAM_SHORT = pl.col('DAM').str.split(' ').list.slice(0, 7).list.join(' ')
-#         )
-#     )
-#     state_dam_count = df_state.height
-#     df_state = df_state.head(min(state_dam_count,15))
-#     fig = px.bar(
-#         df_state, 
-#         y='DAM_SHORT', 
-#         x='MAX_STG_ACR_FT',
-#         template='simple_white',
-#         title = f"DAMS ON {state.upper()}'S LARGEST WATERWAYS"
-#     )
-#     fig.update_layout(
-#         yaxis=dict(
-#             autorange='reversed',
-#             title='',
-#         ),
-#         xaxis=dict(
-#             title='MAXIMUM STORAGE [ACRE-FEET]'
-#         ),
-#     )
-#     return(fig)
-
-# def get_state_card_text(state):
-#     df_state = (
-#         df
-#         .filter(pl.col('STATE') == state)
-#         .select(['STATE'] + dam_stats)
-#     )
-#     dam_count=df_state.shape[0]
-#     df_state_stats = (
-#         df_state.group_by('STATE').agg(pl.col(dam_stats).sum())
-#         .transpose(
-#             include_header=True,
-#             header_name='STATISTIC',
-#         )
-#         .rename({'column_0': 'TOTAL'})
-#         .filter(pl.col('STATISTIC') != 'STATE')
-#         # cannot directly cast Int as to String. Cast to Float, then cast to Int
-#         .with_columns(pl.col('TOTAL').cast(pl.Float64).cast(pl.Int64))
-#         .with_columns(
-#             AVERAGE = (
-#                 pl.col('TOTAL')/dam_count)
-#                 .cast(pl.Int64)
-#             )
-#     )
-     
-#     tot_max_acre_feet = get_state_stat(df_state_stats, 'MAX_STG_ACR_FT', 'TOTAL')
-#     avg_max_acre_feet = get_state_stat(df_state_stats, 'MAX_STG_ACR_FT', 'AVERAGE')
-#     title_text = (
-#        f"{state}'s {dam_count:,} dams " + 
-#        f'contain a total of {tot_max_acre_feet:,} acre-feet of water. ' + 
-#        f'Average containment per dam is {avg_max_acre_feet:,} acre-feet'
-#     ) 
-#     return title_text
 
 def get_table():
     df_table = (
@@ -312,8 +247,7 @@ def get_table():
 #----- DASH APPLICATION STRUCTURE-----------------------------------------------
 
 data_source_link = (
-    f'Data Source:  https://rieee.appstate.edu/projects-programs/cdiac/'
-    )
+    'Data Source:  https://rieee.appstate.edu/projects-programs/cdiac/')
 print(f'{data_source_link = }')
 app = Dash(external_stylesheets=[dbc.themes.LITERA])
 app.layout =  dmc.MantineProvider(
@@ -372,8 +306,8 @@ app.layout =  dmc.MantineProvider(
         html.Hr(style=style_horiz_line),
         dbc.Row([
             dbc.Col(
-                html.Div('X-Axis Corr Parameter:'), 
-                width={'size': 2, 'offset': 0}
+                html.Div('X-Axis:'), 
+                width={'size': 1, 'offset': 1}
             ),
             dbc.Col(
                 [
@@ -381,7 +315,7 @@ app.layout =  dmc.MantineProvider(
                         sorted(short_col_names[1:-1]), 
                         sorted(short_col_names[1:-1])[0], 
                         inline=True,
-                        labelStyle={'margin-right': '30px',},
+                        labelStyle={'margin-left': '30px','margin-right': '30px'},
                         id='corr_x_radio', 
                     ),
                 ],
@@ -391,8 +325,8 @@ app.layout =  dmc.MantineProvider(
         html.Div(),
         dbc.Row([       
             dbc.Col(
-                    html.Div('Y-Axis Corr Parameter:'), 
-                    width={'size': 2, 'offset': 0}
+                    html.Div('Y-Axis:'), 
+                    width={'size': 1, 'offset': 1, 'text-align': 'end'}
                 ),
             dbc.Col(
                 [
@@ -400,29 +334,86 @@ app.layout =  dmc.MantineProvider(
                         sorted(short_col_names[1:-1]), 
                         sorted(short_col_names[1:-1])[1], 
                         inline=True,
-                        labelStyle={'margin-right': '30px'},
+                        labelStyle={'margin-left': '30px','margin-right': '30px'},
                         id='corr_y_radio',  
                     ),
                 ],
-                width={'size': 8, 'offset': 0}),
+                width={'size': 10, 'offset': 0}
+            ),
         ]),
         html.Div(),
+        html.Div("", className="w-25 p-3 bg-transparent border-0"),
         dbc.Row([
             dbc.Col(
                 dcc.Graph(id='graph_corr'),
-                width=6
             ),
-            dbc.Col(
-                dcc.Graph(id='graph_bar'),
-                width=6
+            dbc.Col(dbc.Card([
+                html.H3(
+                    'Stats', 
+                    className='card-header',
+                ),
+                dbc.ListGroup(
+                    [
+                        dbc.ListGroupItem('Slope'),
+                        dbc.ListGroupItem('Slope', id='lg_slope_val'),
+                    ],
+                    horizontal=True,
+                    flush=True,
+                    # className="m-2 border-0",
+                ),
+                dbc.ListGroup(
+                    [
+                        dbc.ListGroupItem('Intercept'),
+                        dbc.ListGroupItem('Intercept', id='lg_intcpt_val'),
+                    ],
+                    horizontal=True,
+                    flush=True,
+                    # className="m-2 border-0",
+                ),
+                dbc.ListGroup(
+                    [
+                        dbc.ListGroupItem('Correlation'),
+                        dbc.ListGroupItem('Correlation', id='lg_corr_val'),
+                    ],
+                    horizontal=True,
+                    flush=True,
+                ),
+                dbc.ListGroup(
+                    [
+                        dbc.ListGroupItem('Standard Error'),
+                        dbc.ListGroupItem('Standard Error', id='lg_stderr'),
+                    ],
+                    horizontal=True,
+                    flush=True,
+                ),
+                dbc.ListGroup(
+                    [
+                        dbc.ListGroupItem('Intercept Std Err'),
+                        dbc.ListGroupItem('Intercept Std Err', id='lg_i_stderr'),
+                    ],
+                    horizontal=True,
+                    flush=True,
+                ),
+                
+                # style={"width": "12rm"},
+            ]),
             ),
         ]),
+        html.Div("", className="w-25 p-3 bg-transparent border-0"),
+        html.Div(),
+        html.Hr(style=style_horiz_line),
+        html.H2(
+            'Data and Definitions', 
+            style={'text-align': 'center', 'font-size': '32px'}
+        ),
+        html.H3('Pearson values from scipy.stats', style=style_h3),
+        html.Hr(style=style_horiz_line),
         dbc.Row([
             dbc.Col([grid],id='dash_ag_table', width=5),
             dbc.Col(dbc.Card([
                 dbc.CardBody([
                         html.H4(
-                            'YEAR STATISTICS', 
+                            'Definitions', 
                             className='card-header',
                             id='card_title'
                         ),
@@ -443,10 +434,14 @@ app.layout =  dmc.MantineProvider(
     Output('graph_plot', 'figure'),
     Output('graph_diff', 'figure'),
     Output('graph_corr','figure'),
-    Output('graph_bar','figure'),
     Output('dash_ag_table', 'rowData'),
-    Output('card_title','children'),
-    Output('card_text','children'),
+    Output('lg_slope_val','children'),
+    Output('lg_intcpt_val','children'),
+    Output('lg_corr_val','children'),
+    Output('lg_stderr','children'),
+    Output('lg_i_stderr','children'),
+    # Output('corr4','children'),
+    # Output('corr5','children'),
 
     Input('group_by_radio', 'value'),
     Input('graph_type_radio', 'value'),
@@ -473,10 +468,19 @@ def update_dashboard(group_by, graph_type, corr_x, corr_y
         get_data_plot('DATA', group_by, graph_type),
         get_data_plot('DIFF', group_by, graph_type),
         get_corr_plot(corr_x, corr_y, group_by),
-        get_data_plot('DIFF', group_by, graph_type),  # replace with get bar
         get_table(),
-        'CARD TITLE PLACEHOLDER', # get_card_title(),
-        'CARD TEXT PLACEHOLDER'
+        # 'CARD TITLE PLACEHOLDER', # get_card_title(),
+        # 'CARD TEXT PLACEHOLDER',
+        # 'CARD CORR TITLE PLACEHOLDER', # get_card_title(),
+        f'{get_corr_card_slope(corr_x, corr_y, group_by):.3f}',
+        f'{get_corr_card_intercept(corr_x, corr_y, group_by):.3f}',
+        f'{get_corr_card_r2(corr_x, corr_y, group_by):.3f}',
+        f'{get_corr_card_stderr(corr_x, corr_y, group_by):.3f}',
+        f'{get_corr_card_i_stderr(corr_x, corr_y, group_by):.3f}',
+        # f'Intercept = {get_corr_card_intercept(corr_x, corr_y, group_by):.3f}',
+        # f'Correlation = {get_corr_card_r2(corr_x, corr_y, group_by):.3f}',
+        # f'Slope Standard Error = {get_corr_card_stderr(corr_x, corr_y, group_by):.3f}',
+        # f'Intercept Standard Error = {get_corr_card_i_stderr(corr_x, corr_y, group_by):.3f}',
     )
 if __name__ == '__main__':
     app.run_server(debug=True)
