@@ -19,7 +19,7 @@ short_col_names = [
     'CEMENT', 'FLARING', 'PER_CAP','DECADE']
 dict_cols = dict(zip(df_col_defs, short_col_names))
 dict_cols_reversed = dict(zip(short_col_names, df_col_defs))
-table_column_order = [
+dag_columns = [
     'DECADE', 'YEAR', 'CEMENT', 'FLARING', 'FOSSIL', 
     'GAS', 'LIQUID', 'SOLID', 'PER_CAP', ]
 
@@ -35,8 +35,9 @@ style_h3 = {
 grid = dag.AgGrid(
     rowData=[],
     columnDefs=[
-        {"field": i, 'filter': True, 'sortable': True} 
-        for i in table_column_order
+        {"field": i, 'filter': True, 'sortable': True,
+         'tooltipField': i, 'headerTooltip': dict_cols_reversed.get(i) } 
+        for i in dag_columns
     ],
     dashGridOptions={"pagination": True},
     columnSize="responsiveSizeToFit",
@@ -262,11 +263,11 @@ def get_corr_plot(corr_x, corr_y, group_by):
 
 def get_table(group_by):
     if group_by == 'YEAR':
-        df = df_year.select(table_column_order)
+        df = df_year.select(dag_columns)
     if group_by == 'DECADE':
         df = (
             df_decade
-            .select(table_column_order)
+            .select(dag_columns)
         )
     return df.to_dicts()
 
