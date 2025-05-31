@@ -307,9 +307,11 @@ app.layout =  dmc.MantineProvider([
         dbc.Col(dcc.Graph(id='graph_diff'), width=6),
         ]),
     html.Div(),
+    
+    # changed Correlations header from Dash Bootstrap to Dash Mantine
     html.Hr(style=style_horiz_line),
-    html.H2('Correlations', style=style_h2),
-    html.H3('Pearson values from scipy.stats', style=style_h3),
+    dmc.Text('Correlations', ta='center', style=style_h2),
+    dmc.Text('Pearson values from scipy.stats', ta='center', style=style_h3),
     html.Hr(style=style_horiz_line),
     dbc.Row([
         dbc.Col(html.Div('X-Axis:'), width={'size': 1, 'offset': 1}),
@@ -347,9 +349,12 @@ app.layout =  dmc.MantineProvider([
     ]),
     html.Div("", className="w-25 p-3 bg-transparent border-0"),
     html.Div(),
+
+    #changed Data and Definitions header from Dash Bootstrap to Dash Mantine
     html.Hr(style=style_horiz_line),
-    html.H2('Data and Definitions',id='data_and_defs',style=style_h2),
+    dmc.Text('Data and Definitions', ta='center', style=style_h2, id='data_and_defs'),
     html.Hr(style=style_horiz_line),
+
     dbc.Row([
         dbc.Col([grid], width=8),
         dbc.Col(definition_card, width=4),
@@ -377,7 +382,7 @@ app.layout =  dmc.MantineProvider([
 def update_dashboard(group_by, graph_type, corr_x, corr_y):
     data_defs_title = 'Data and Definitions'
     if group_by == 'DECADE':
-        data_defs_title = 'Data (grouped by decade) and Definitions'
+        data_defs_title = 'Data (by decade) and Definitions'
     return (
         get_data_plot('DATA', group_by, graph_type),
         get_data_plot('DIFF', group_by, graph_type),
