@@ -1,13 +1,15 @@
 import polars as pl
 import plotly.express as px
 import plotly.graph_objects as go
+import dash
 from dash import Dash, dcc, html, Input, Output
 import dash_bootstrap_components as dbc
 import dash_ag_grid as dag
 import dash_mantine_components as dmc
-import dash
 from scipy import stats
 dash._dash_renderer._set_react_version('18.2.0')
+# print(f'{dmc.__version__ = }')
+# print(f'{dash.__version__ = }')
 
 #----- GLOBALS -----------------------------------------------------------------
 
@@ -27,9 +29,9 @@ style_horiz_line = {'border': 'none', 'height': '4px',
     'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
     'margin': '10px,', 'fontsize': 32}
 
-style_h2 = {'text-align': 'center', 'font-size': '32px'}
-style_h3 = {
-    'text-align': 'center', 'font-size': '16px', 'font-weight': 'normal'}
+# dmc-
+style_h2 = {'text-align': 'center', 'font-size': '32px', 'fontFamily': 'Arial','font-weight': 'bold'}
+style_h3 = {'text-align': 'center', 'font-size': '16px', 'fontFamily': 'Arial','font-weight': 'normal'}
 
 #----- DASHBOARD COMPONENTS ----------------------------------------------------
 grid = dag.AgGrid(
@@ -273,88 +275,86 @@ def get_table(group_by):
 
 #----- DASH APPLICATION STRUCTURE-----------------------------------------------
 app = Dash(external_stylesheets=[dbc.themes.LITERA])
-app.layout =  dmc.MantineProvider(
-    [
-        html.Hr(style=style_horiz_line),
-        html.H2('CO2 EMISSIONS DATA', style=style_h2),
-        html.H3(data_src, style=style_h3),
-        html.Hr(style=style_horiz_line),
-        dbc.Row([ # cols 2 & 3 for Group by, 5 & 6 for Plot type
-            dbc.Col(html.Div('Group by:'), width={'size': 2, 'offset': 1}),
-            dbc.Col(html.Div('Plot type:'), width={'size': 2, 'offset': 1}),
+app.layout =  dmc.MantineProvider([
+    # changed header from Dash Bootstrap to Dash Mantine
+    html.Hr(style=style_horiz_line),
+    dmc.Text('CO2 EMISSIONS', ta='center', style=style_h2),
+    dmc.Text(data_src, ta='center', style=style_h3),
+    html.Hr(style=style_horiz_line),
+    dbc.Row([ # cols 2 & 3 for Group by, 5 & 6 for Plot type
+        dbc.Col(html.Div('Group by:'), width={'size': 2, 'offset': 1}),
+        dbc.Col(html.Div('Plot type:'), width={'size': 2, 'offset': 1}),
+    ]),
+    dbc.Row([       
+        dbc.Col([
+            dcc.RadioItems(
+                ['DECADE', 'YEAR'], 'YEAR', inline=False,
+                labelStyle={'margin-right': '30px',},
+                id='group_by_radio', 
+            ),],
+            width={'size': 2, 'offset': 1} # cols 2 & 3
+        ), 
+        dbc.Col([dcc.RadioItems(
+                ['AREA', 'LINE'], 'AREA',  inline=False,
+                labelStyle={'margin-right': '30px',},
+                id='graph_type_radio', 
+            ),],
+            width={'size': 2, 'offset': 1}), # column 5 to 6
+    ]),
+    html.Div(),
+    dbc.Row([
+        dbc.Col(dcc.Graph(id='graph_plot'), width=6),
+        dbc.Col(dcc.Graph(id='graph_diff'), width=6),
         ]),
-        dbc.Row([       
-            dbc.Col([
-                dcc.RadioItems(
-                    ['DECADE', 'YEAR'], 'YEAR', inline=False,
-                    labelStyle={'margin-right': '30px',},
-                    id='group_by_radio', 
-                ),],
-                width={'size': 2, 'offset': 1} # cols 2 & 3
-            ), 
-            dbc.Col([dcc.RadioItems(
-                    ['AREA', 'LINE'], 'AREA',  inline=False,
-                    labelStyle={'margin-right': '30px',},
-                    id='graph_type_radio', 
-                ),],
-                width={'size': 2, 'offset': 1}), # column 5 to 6
-        ]),
-        html.Div(),
-        dbc.Row(
-            [
-                dbc.Col(dcc.Graph(id='graph_plot'), width=6),
-                dbc.Col(dcc.Graph(id='graph_diff'), width=6),
-            ]
-        ),
-        html.Div(),
-        html.Hr(style=style_horiz_line),
-        html.H2('Correlations', style=style_h2),
-        html.H3('Pearson values from scipy.stats', style=style_h3),
-        html.Hr(style=style_horiz_line),
-        dbc.Row([
-            dbc.Col(html.Div('X-Axis:'), width={'size': 1, 'offset': 1}),
-            dbc.Col([
+    html.Div(),
+    html.Hr(style=style_horiz_line),
+    html.H2('Correlations', style=style_h2),
+    html.H3('Pearson values from scipy.stats', style=style_h3),
+    html.Hr(style=style_horiz_line),
+    dbc.Row([
+        dbc.Col(html.Div('X-Axis:'), width={'size': 1, 'offset': 1}),
+        dbc.Col([
+            dcc.RadioItems(
+                sorted(short_col_names[1:-1]), 
+                sorted(short_col_names[1:-1])[0], 
+                inline=True,
+                labelStyle={'margin-left': '30px','margin-right': '30px'},
+                id='corr_x_radio', 
+            ),
+        ],
+        width={'size': 10, 'offset': 0}),
+    ]),
+    html.Div(),
+    dbc.Row([       
+        dbc.Col(html.Div('Y-Axis:'), width={'size': 1, 'offset': 1}),
+        dbc.Col([
                 dcc.RadioItems(
                     sorted(short_col_names[1:-1]), 
-                    sorted(short_col_names[1:-1])[0], 
+                    sorted(short_col_names[1:-1])[2], 
                     inline=True,
                     labelStyle={'margin-left': '30px','margin-right': '30px'},
-                    id='corr_x_radio', 
+                    id='corr_y_radio',  
                 ),
             ],
-            width={'size': 10, 'offset': 0}),
-        ]),
-        html.Div(),
-        dbc.Row([       
-            dbc.Col(html.Div('Y-Axis:'), width={'size': 1, 'offset': 1}),
-            dbc.Col([
-                    dcc.RadioItems(
-                        sorted(short_col_names[1:-1]), 
-                        sorted(short_col_names[1:-1])[2], 
-                        inline=True,
-                        labelStyle={'margin-left': '30px','margin-right': '30px'},
-                        id='corr_y_radio',  
-                    ),
-                ],
-                width={'size': 10, 'offset': 0}
-            ),
-        ]),
-        html.Div(),
-        html.Div("", className="w-25 p-3 bg-transparent border-0"),
-        dbc.Row([
-            dbc.Col(dcc.Graph(id='graph_corr')),
-            dbc.Col(regression_stats_card)
-        ]),
-        html.Div("", className="w-25 p-3 bg-transparent border-0"),
-        html.Div(),
-        html.Hr(style=style_horiz_line),
-        html.H2('Data and Definitions',id='data_and_defs',style=style_h2),
-        html.Hr(style=style_horiz_line),
-        dbc.Row([
-            dbc.Col([grid], width=8),
-            dbc.Col(definition_card, width=4),
-        ])
+            width={'size': 10, 'offset': 0}
+        ),
+    ]),
+    html.Div(),
+    html.Div("", className="w-25 p-3 bg-transparent border-0"),
+    dbc.Row([
+        dbc.Col(dcc.Graph(id='graph_corr')),
+        dbc.Col(regression_stats_card)
+    ]),
+    html.Div("", className="w-25 p-3 bg-transparent border-0"),
+    html.Div(),
+    html.Hr(style=style_horiz_line),
+    html.H2('Data and Definitions',id='data_and_defs',style=style_h2),
+    html.Hr(style=style_horiz_line),
+    dbc.Row([
+        dbc.Col([grid], width=8),
+        dbc.Col(definition_card, width=4),
     ]
+    )]
 )
 
 @app.callback(
