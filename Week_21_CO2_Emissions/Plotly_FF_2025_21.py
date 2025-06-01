@@ -343,8 +343,8 @@ app.layout =  dmc.MantineProvider([
         dmc.GridCol(grid, span=6, offset = 0),
         dmc.GridCol(definition_card, span=4, offset = 1)
         ]
-    ),
-])
+    )]
+)
 
 @app.callback(
     Output('graph_plot', 'figure'),
