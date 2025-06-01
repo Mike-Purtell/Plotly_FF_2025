@@ -30,6 +30,27 @@ style_horiz_line = {'border': 'none', 'height': '4px',
 style_h2 = {'text-align': 'center', 'font-size': '32px', 'fontFamily': 'Arial','font-weight': 'bold'}
 style_h3 = {'text-align': 'center', 'font-size': '16px', 'fontFamily': 'Arial','font-weight': 'normal'}
 
+#----- FUNCTIONS  --------------------------------------------------------------
+def get_corr_stat(stat, corr_x, corr_y, group_by):
+    df_plot = df_year.drop_nulls([corr_x, corr_y])
+    if group_by == 'DECADE':
+        df_plot = df_decade.drop_nulls([corr_x, corr_y])
+    res = stats.linregress(df_plot[corr_x], df_plot[corr_y])
+    if stat == 'SLOPE':
+        val = res.slope
+    elif stat == 'INTERCEPT':  
+        val = res.intercept
+    elif stat == 'CORR':  
+        val = res.rvalue**2
+    elif stat == 'STDERR':  
+        val = res.stderr
+    elif stat == 'I_STDERR': 
+        val = res.intercept_stderr
+    else:
+        print('illegal value, unrecognized stat')
+        val = -999999
+    return val
+
 #----- DASHBOARD COMPONENTS ----------------------------------------------------
 grid = dag.AgGrid(
     rowData=[],
@@ -64,45 +85,23 @@ definition_card = dmc.Card(
     ]
 )
 
-regression_stats_card = (
-    dbc.Card([
-        html.H3('Stats', className='card-header',),
-        dbc.ListGroup([
-                dbc.ListGroupItem('Slope'),
-                dbc.ListGroupItem('Slope', id='lg_slope_val'),
-            ],
-            horizontal=True,
-            flush=True,
-        ),
-        dbc.ListGroup([
-                dbc.ListGroupItem('Intercept'),
-                dbc.ListGroupItem('Intercept', id='lg_intcpt_val'),
-            ],
-            horizontal=True,
-            flush=True,
-        ),
-        dbc.ListGroup([
-                dbc.ListGroupItem('Correlation'),
-                dbc.ListGroupItem('Correlation', id='lg_corr_val'),
-            ],
-            horizontal=True,
-            flush=True,
-        ),
-        dbc.ListGroup([
-                dbc.ListGroupItem('Standard Error'),
-                dbc.ListGroupItem('Standard Error', id='lg_stderr'),
-            ],
-            horizontal=True,
-            flush=True,
-        ),
-        dbc.ListGroup([
-                dbc.ListGroupItem('Intercept Std Err'),
-                dbc.ListGroupItem('Intercept Std Err', id='lg_i_stderr'),
-            ],
-            horizontal=True,
-            flush=True,
-        ),
-    ]),
+stats_card =  dmc.Card(
+    children = [
+        dmc.CardSection(
+            children = [
+                dmc.List(
+                    children = [
+                    dmc.ListItem('', id='slope'),    
+                    dmc.ListItem('', id='intercept'), 
+                    dmc.ListItem('', id='correlation'), 
+                    dmc.ListItem('', id='stderr'),
+                    dmc.ListItem('', id='i_stderr')
+                    ],
+                size='sm'
+                )
+            ]
+        )
+    ]
 )
 
 #----- READ & CLEAN DATASET, STORE AS 4 DATAFRAMES -----------------------------
@@ -163,27 +162,6 @@ df_decade_diff = (
 )
 
 #----- CALLBACK FUNCTIONS ------------------------------------------------------
-
-def get_corr_stat(stat, corr_x, corr_y, group_by):
-    df_plot = df_year.drop_nulls([corr_x, corr_y])
-    if group_by == 'DECADE':
-        df_plot = df_decade.drop_nulls([corr_x, corr_y])
-    res = stats.linregress(df_plot[corr_x], df_plot[corr_y])
-    if stat == 'SLOPE':
-        val = res.slope
-    elif stat == 'INTERCEPT':  
-        val = res.intercept
-    elif stat == 'CORR':  
-        val = res.rvalue**2
-    elif stat == 'STDERR':  
-        val = res.stderr
-    elif stat == 'I_STDERR': 
-        val = res.intercept_stderr
-    else:
-        print('illegal value, unrecognized stat')
-        val = -999999
-    return val
-
 def get_data_plot(data_type, group_by, graph_type):
     if (data_type, group_by) == ('DATA', 'YEAR'):
         df_plot = df_year
@@ -357,7 +335,7 @@ app.layout =  dmc.MantineProvider([
     html.Div("", className="w-25 p-3 bg-transparent border-0"),
     dbc.Row([
         dbc.Col(dcc.Graph(id='graph_corr')),
-        dbc.Col(regression_stats_card)
+        dbc.Col(stats_card)
     ]),
     html.Div("", className="w-25 p-3 bg-transparent border-0"),
     html.Div(),
@@ -379,11 +357,11 @@ app.layout =  dmc.MantineProvider([
     Output('graph_diff', 'figure'),
     Output('graph_corr','figure'),
     Output('dash_ag_table', 'rowData'),
-    Output('lg_slope_val','children'),
-    Output('lg_intcpt_val','children'),
-    Output('lg_corr_val','children'),
-    Output('lg_stderr','children'),
-    Output('lg_i_stderr','children'),
+    Output('slope','children'),
+    Output('intercept','children'),
+    Output('correlation','children'),
+    Output('stderr','children'),
+    Output('i_stderr','children'),
     Output('data_and_defs','children'),
 
     Input('group_by_radio', 'value'),
@@ -400,11 +378,11 @@ def update_dashboard(group_by, graph_type, corr_x, corr_y):
         get_data_plot('DIFF', group_by, graph_type),
         get_corr_plot(corr_x, corr_y, group_by),
         get_table(group_by),
-        f'{get_corr_stat('SLOPE', corr_x, corr_y, group_by):.3f}',
-        f'{get_corr_stat('INTERCEPT',  corr_x, corr_y, group_by):.3f}',
-        f'{get_corr_stat('CORR',corr_x,  corr_y, group_by):.3f}',
-        f'{get_corr_stat('STDERR', corr_x, corr_y, group_by):.3f}',
-        f'{get_corr_stat('I_STDERR', corr_x, corr_y, group_by):.3f}',
+        f'SLOPE: {get_corr_stat('SLOPE', corr_x, corr_y, group_by):.3f}',
+        f'INTERCEPT: {get_corr_stat('INTERCEPT', corr_x, corr_y, group_by):.3f}',
+        f'CORR: {get_corr_stat('CORR', corr_x, corr_y, group_by):.3f}',
+        f'STDERR: {get_corr_stat('STDERR', corr_x, corr_y, group_by):.3f}',
+        f'I_STDERR: {get_corr_stat('I_STDERR', corr_x, corr_y, group_by):.3f}',
         data_defs_title
     )
 if __name__ == '__main__':
