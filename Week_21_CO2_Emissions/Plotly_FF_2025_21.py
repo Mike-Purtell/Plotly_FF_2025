@@ -8,11 +8,8 @@ import dash_ag_grid as dag
 import dash_mantine_components as dmc
 from scipy import stats
 dash._dash_renderer._set_react_version('18.2.0')
-# print(f'{dmc.__version__ = }')
-# print(f'{dash.__version__ = }')
 
 #----- GLOBALS -----------------------------------------------------------------
-
 data_src ='Data Source:  https://rieee.appstate.edu/projects-programs/cdiac/'
 
 df_col_defs  = [c for c in pl.scan_csv('global.1751_2021.csv').collect_schema()]
@@ -281,25 +278,32 @@ app.layout =  dmc.MantineProvider([
     dmc.Text('CO2 EMISSIONS', ta='center', style=style_h2),
     dmc.Text(data_src, ta='center', style=style_h3),
     html.Hr(style=style_horiz_line),
-    dbc.Row([ # cols 2 & 3 for Group by, 5 & 6 for Plot type
-        dbc.Col(html.Div('Group by:'), width={'size': 2, 'offset': 1}),
-        dbc.Col(html.Div('Plot type:'), width={'size': 2, 'offset': 1}),
-    ]),
-    dbc.Row([       
+    dbc.Row([ 
         dbc.Col([
-            dcc.RadioItems(
-                ['DECADE', 'YEAR'], 'YEAR', inline=False,
-                labelStyle={'margin-right': '30px',},
-                id='group_by_radio', 
-            ),],
-            width={'size': 2, 'offset': 1} # cols 2 & 3
-        ), 
-        dbc.Col([dcc.RadioItems(
-                ['AREA', 'LINE'], 'AREA',  inline=False,
-                labelStyle={'margin-right': '30px',},
-                id='graph_type_radio', 
-            ),],
-            width={'size': 2, 'offset': 1}), # column 5 to 6
+            dmc.RadioGroup(
+                children=dmc.Group(
+                    [dmc.Radio(i, value=i) for i in ['DECADE', 'YEAR']], my=10
+                ),
+                value='YEAR',
+                label= 'Select Group By',
+                size="sm",
+                mt=10,
+                id='group_by_radio'
+            ),
+        ]),
+        dmc.Text(id="radio-output"),    
+        dbc.Col([
+            dmc.RadioGroup(
+                children=dmc.Group(
+                    [dmc.Radio(i, value=i) for i in ['AREA', 'LINE']], my=10
+                ),
+                value='AREA',
+                label='Select Plot Type',
+                size="sm",
+                mt=10,
+                id='graph_type_radio'
+            ),
+        ]),
     ]),
     html.Div(),
     dbc.Row([
