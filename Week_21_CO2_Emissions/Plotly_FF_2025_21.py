@@ -43,21 +43,26 @@ grid = dag.AgGrid(
     id='dash_ag_table',
 )
 
-definition_card = dbc.Card([
-    dbc.CardBody([
-        dbc.ListGroup(
-            [
-            dbc.ListGroupItem(f'CEMENT: {dict_cols_reversed['CEMENT']}'),
-            dbc.ListGroupItem(f'FLARING: {dict_cols_reversed['FLARING']}'),
-            dbc.ListGroupItem(f'FOSSIL: {dict_cols_reversed['FOSSIL']}'),
-            dbc.ListGroupItem(f'GAS: {dict_cols_reversed['GAS']}'),
-            dbc.ListGroupItem(f'LIQUID: {dict_cols_reversed['LIQUID']}'),
-            dbc.ListGroupItem(f'SOLID: {dict_cols_reversed['SOLID']}'),
-            dbc.ListGroupItem(f'PER_CAP: {dict_cols_reversed['PER_CAP']}'),
-            ],
+definition_card = dmc.Card(
+    children = [
+        dmc.CardSection(
+            children = [
+                dmc.List(
+                    children = [
+                    dmc.ListItem(f'CEMENT: {dict_cols_reversed['CEMENT']}'),
+                    dmc.ListItem(f'FLARING: {dict_cols_reversed['FLARING']}'),
+                    dmc.ListItem(f'FOSSIL: {dict_cols_reversed['FOSSIL']}'),
+                    dmc.ListItem(f'GAS: {dict_cols_reversed['GAS']}'),
+                    dmc.ListItem(f'LIQUID: {dict_cols_reversed['LIQUID']}'),
+                    dmc.ListItem(f'SOLID: {dict_cols_reversed['SOLID']}'),
+                    dmc.ListItem(f'PER_CAP: {dict_cols_reversed['PER_CAP']}'),
+                    ],
+                size='sm'
+                )
+            ]
         )
-    ]),
-])
+    ]
+)
 
 regression_stats_card = (
     dbc.Card([
