@@ -3,7 +3,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import dash
 from dash import Dash, dcc, html, Input, Output
-import dash_bootstrap_components as dbc
 import dash_ag_grid as dag
 import dash_mantine_components as dmc
 from scipy import stats
@@ -16,6 +15,7 @@ df_col_defs  = [c for c in pl.scan_csv('global.1751_2021.csv').collect_schema()]
 short_col_names = [
     'YEAR', 'FOSSIL', 'SOLID', 'LIQUID', 'GAS', 
     'CEMENT', 'FLARING', 'PER_CAP','DECADE']
+short_param_names = short_col_names[1:-1] # excludes first and last list items
 dict_cols = dict(zip(df_col_defs, short_col_names))
 dict_cols_reversed = dict(zip(short_col_names, df_col_defs))
 dag_columns = [
@@ -64,6 +64,61 @@ grid = dag.AgGrid(
     id='dash_ag_table',
 )
 
+radio_group_by = dmc.RadioGroup(
+    children=dmc.Group(
+        [dmc.Radio(i, value=i) for i in ['DECADE', 'YEAR']], my=10
+    ),
+    value='YEAR',
+    label= 'Group By',
+    size='lg',
+    mt=10,
+    id='group_by_radio'
+)
+
+radio_graph_type = dmc.RadioGroup(
+    children=dmc.Group(
+        [dmc.Radio(i, value=i) for i in ['AREA', 'LINE']], my=10
+    ),
+    value='AREA',
+    label= 'Plot Type',
+    size='lg',
+    mt=10,
+    id='graph_type_radio'
+)
+
+def get_radio_corr_param(my_id, my_label, my_def):
+    return (
+        dmc.RadioGroup(
+            children=dmc.Group(
+                [dmc.Radio(i, value=i) for i in short_param_names], my=10
+            ),
+            value=my_def,
+            label= my_label,
+            size='lg',
+            mt=10,
+            id=my_id
+        )
+    )
+
+stats_card =  dmc.Card(
+    children = [
+        dmc.CardSection(
+            children = [
+                dmc.List(
+                    children = [
+                    dmc.ListItem('', id='slope'),    
+                    dmc.ListItem('', id='intercept'), 
+                    dmc.ListItem('', id='correlation'), 
+                    dmc.ListItem('', id='stderr'),
+                    dmc.ListItem('', id='i_stderr')
+                    ],
+                size='lg'
+                )
+            ]
+        )
+    ]
+)
+
 definition_card = dmc.Card(
     children = [
         dmc.CardSection(
@@ -78,30 +133,11 @@ definition_card = dmc.Card(
                     dmc.ListItem(f'SOLID: {dict_cols_reversed['SOLID']}'),
                     dmc.ListItem(f'PER_CAP: {dict_cols_reversed['PER_CAP']}'),
                     ],
-                size='sm'
+                size='lg'
                 )
             ]
         )
-    ]
-)
-
-stats_card =  dmc.Card(
-    children = [
-        dmc.CardSection(
-            children = [
-                dmc.List(
-                    children = [
-                    dmc.ListItem('', id='slope'),    
-                    dmc.ListItem('', id='intercept'), 
-                    dmc.ListItem('', id='correlation'), 
-                    dmc.ListItem('', id='stderr'),
-                    dmc.ListItem('', id='i_stderr')
-                    ],
-                size='sm'
-                )
-            ]
-        )
-    ]
+    ],
 )
 
 #----- READ & CLEAN DATASET, STORE AS 4 DATAFRAMES -----------------------------
@@ -254,103 +290,61 @@ def get_table(group_by):
     return df.to_dicts()
 
 #----- DASH APPLICATION STRUCTURE-----------------------------------------------
-app = Dash(external_stylesheets=[dbc.themes.LITERA])
+app = Dash()
 app.layout =  dmc.MantineProvider([
-    # changed header from Dash Bootstrap to Dash Mantine
     html.Hr(style=style_horiz_line),
     dmc.Text('CO2 EMISSIONS', ta='center', style=style_h2),
     dmc.Text(data_src, ta='center', style=style_h3),
     html.Hr(style=style_horiz_line),
-    dbc.Row([ 
-        dbc.Col([
-            dmc.RadioGroup(
-                children=dmc.Group(
-                    [dmc.Radio(i, value=i) for i in ['DECADE', 'YEAR']], my=10
-                ),
-                value='YEAR',
-                label= 'Select Group By',
-                size="sm",
-                mt=10,
-                id='group_by_radio'
-            ),
-        ]),
-        dmc.Text(id="radio-output"),    
-        dbc.Col([
-            dmc.RadioGroup(
-                children=dmc.Group(
-                    [dmc.Radio(i, value=i) for i in ['AREA', 'LINE']], my=10
-                ),
-                value='AREA',
-                label='Select Plot Type',
-                size="sm",
-                mt=10,
-                id='graph_type_radio'
-            ),
-        ]),
-    ]),
     html.Div(),
-    dbc.Row([
-        dbc.Col(dcc.Graph(id='graph_plot'), width=6),
-        dbc.Col(dcc.Graph(id='graph_diff'), width=6),
-        ]),
+    dmc.Grid(
+        children = [
+            dmc.GridCol(radio_group_by, span=3, offset = 1),
+            dmc.GridCol(radio_graph_type, span=3, offset = 1),
+        ]
+    ),
+    dmc.Grid(
+        children = [
+            dmc.GridCol(dcc.Graph(id='graph_plot'), span=5, offset = 1),
+            dmc.GridCol(dcc.Graph(id='graph_diff'), span=5, offset = 1),
+        ]
+    ),
     html.Div(),
-    
-    # changed Correlations header from Dash Bootstrap to Dash Mantine
     html.Hr(style=style_horiz_line),
     dmc.Text('Correlations', ta='center', style=style_h2),
     dmc.Text('Pearson values from scipy.stats', ta='center', style=style_h3),
     html.Hr(style=style_horiz_line),
-    dbc.Row([
-        dbc.Col([
-            dmc.RadioGroup(
-                children=dmc.Group(
-                    [dmc.Radio(i, value=i) for i in short_col_names[1:-1]], my=10
-                ),
-                value=(short_col_names[1:-1])[2],
-                label='Select Y Axis Parameter',
-                size="sm",
-                mt=10,
-                id='corr_x_radio'
+    html.Div(),
+    dmc.Grid(children = [
+        dmc.GridCol(
+            get_radio_corr_param('corr_x_radio', 'X Parameter:', 'FOSSIL'), 
+            span=7, offset = 1
+            )
+        ]
+    ),
+    dmc.Grid(children = [
+        dmc.GridCol(
+            get_radio_corr_param('corr_y_radio', 'Y Parameter:', 'GAS'), 
+            span=7, offset = 1
             ),
-        ]),
-    ]),
+        ]
+    ),
+    dmc.Grid(children = [
+        dmc.GridCol(dcc.Graph(id='graph_corr'), span=5, offset = 1),
+        dmc.GridCol(stats_card, span=4, offset=1)
+        ]
+    ),
     html.Div(),
-    dbc.Row([       
-        dbc.Col([
-                dmc.RadioGroup(
-                    children=dmc.Group(
-                        [dmc.Radio(i, value=i) for i in short_col_names[1:-1]], my=10
-                    ),
-                    value=(short_col_names[1:-1])[2],
-                    label='Select Y Axis Parameter',
-                    size="sm",
-                    mt=10,
-                    id='corr_y_radio'
-                ),
-            ],
-            width={'size': 10, 'offset': 0}
-        ),
-    ]),
-    html.Div(),
-    html.Div("", className="w-25 p-3 bg-transparent border-0"),
-    dbc.Row([
-        dbc.Col(dcc.Graph(id='graph_corr')),
-        dbc.Col(stats_card)
-    ]),
-    html.Div("", className="w-25 p-3 bg-transparent border-0"),
-    html.Div(),
-
-    #changed Data and Definitions header from Dash Bootstrap to Dash Mantine
     html.Hr(style=style_horiz_line),
     dmc.Text('Data and Definitions', ta='center', style=style_h2, id='data_and_defs'),
     html.Hr(style=style_horiz_line),
-
-    dbc.Row([
-        dbc.Col([grid], width=8),
-        dbc.Col(definition_card, width=4),
-    ]
-    )]
-)
+    html.Div(),
+    dmc.Grid(children = [
+        dmc.GridCol(grid, span=6, offset = 0),
+        dmc.GridCol(definition_card, span=4, offset = 1)
+        ]
+    ),
+])
 
 @app.callback(
     Output('graph_plot', 'figure'),
