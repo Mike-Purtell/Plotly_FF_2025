@@ -318,28 +318,31 @@ app.layout =  dmc.MantineProvider([
     dmc.Text('Pearson values from scipy.stats', ta='center', style=style_h3),
     html.Hr(style=style_horiz_line),
     dbc.Row([
-        dbc.Col(html.Div('X-Axis:'), width={'size': 1, 'offset': 1}),
         dbc.Col([
-            dcc.RadioItems(
-                sorted(short_col_names[1:-1]), 
-                sorted(short_col_names[1:-1])[0], 
-                inline=True,
-                labelStyle={'margin-left': '30px','margin-right': '30px'},
-                id='corr_x_radio', 
+            dmc.RadioGroup(
+                children=dmc.Group(
+                    [dmc.Radio(i, value=i) for i in short_col_names[1:-1]], my=10
+                ),
+                value=(short_col_names[1:-1])[2],
+                label='Select Y Axis Parameter',
+                size="sm",
+                mt=10,
+                id='corr_x_radio'
             ),
-        ],
-        width={'size': 10, 'offset': 0}),
+        ]),
     ]),
     html.Div(),
     dbc.Row([       
-        dbc.Col(html.Div('Y-Axis:'), width={'size': 1, 'offset': 1}),
         dbc.Col([
-                dcc.RadioItems(
-                    sorted(short_col_names[1:-1]), 
-                    sorted(short_col_names[1:-1])[2], 
-                    inline=True,
-                    labelStyle={'margin-left': '30px','margin-right': '30px'},
-                    id='corr_y_radio',  
+                dmc.RadioGroup(
+                    children=dmc.Group(
+                        [dmc.Radio(i, value=i) for i in short_col_names[1:-1]], my=10
+                    ),
+                    value=(short_col_names[1:-1])[2],
+                    label='Select Y Axis Parameter',
+                    size="sm",
+                    mt=10,
+                    id='corr_y_radio'
                 ),
             ],
             width={'size': 10, 'offset': 0}
