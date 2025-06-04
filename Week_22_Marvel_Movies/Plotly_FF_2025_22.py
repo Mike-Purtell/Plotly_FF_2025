@@ -7,6 +7,7 @@ import dash_ag_grid as dag
 import dash_mantine_components as dmc
 dash._dash_renderer._set_react_version('18.2.0')
 
+print(f'{dag.__version__ = }')
 #----- GLOBALS -----------------------------------------------------------------
 org_col_names  = [c for c in pl.scan_csv('Marvel-Movies.csv').collect_schema()]
 short_col_names =[
@@ -32,14 +33,16 @@ df_global = (
             .round(3),
         SERIES_NUM = pl.cum_count('FILM').over('FRANCHISE').cast(pl.String)
     )
+    .select(
+        'FRANCHISE', 'FILM', 'YEAR', 'SERIES_NUM', 'AUD_PCT_SCORE', 'BUDGET', 
+        'BUDGET_PCT_OPEN', 'BUD_PCT_REC', 'CRIT_AUD_PCT', 'CRIT_PCT_SCORE', 
+        'DOM_GROSS', 'GROSS_PCT_OPEN', 'INT_GROSS', 'WEEK1', 'WEEK2', 
+        'WEEK2_DROP_OFF', 'WW_GROSS'
+    )
 )
-
+film_list = sorted(df_global.unique('FILM')['FILM'].to_list())
 franchise_list = sorted(df_global.unique('FRANCHISE')['FRANCHISE'].to_list())
 plot_cols = sorted(df_global.select(cs.numeric().exclude('YEAR')).columns)
-
-dag_columns = [  # TODO FIX ME
-    'DECADE', 'YEAR', 'CEMENT', 'FLARING', 'FOSSIL', 
-    'GAS', 'LIQUID', 'SOLID', 'PER_CAP', ]
 
 style_horiz_line = {'border': 'none', 'height': '4px', 
     'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
@@ -51,22 +54,35 @@ style_h2 = {'text-align': 'center', 'font-size': '32px',
 #----- GENERAL FUNCTIONS  ------------------------------------------------------
 
 #----- DASHBOARD COMPONENTS ----------------------------------------------------
-grid = dag.AgGrid(
-    rowData=[],
-    columnDefs=[
-        {"field": i, 'filter': True, 'sortable': True,
-         'tooltipField': i, 'headerTooltip': dict_cols_reversed.get(i) } 
-        for i in dag_columns
-    ],
-    dashGridOptions={"pagination": True},
-    columnSize="responsiveSizeToFit",
-    id='dash_ag_table',
+grid = (
+    dag.AgGrid(
+        rowData=df_global.to_dicts(), 
+        columnDefs=[
+            {
+                'field': i,
+                'filter': True,
+                'sortable': True,
+                'tooltipField': i,
+                'headerTooltip': dict_cols_reversed.get(i),
+            } 
+            for i in df_global.columns
+        ],
+        dashGridOptions={
+            'pagination': False,
+            'rowSelection': "multiple", 
+            'suppressRowClickSelection': True, 
+            'animateRows' : False
+        },
+        columnSize='autoSize',
+        columnSizeOptions={'skipHeader':True},
+        id='dash_ag_table'
+    ),
 )
 
-dmc_select = (
+dmc_select_param = (
     dmc.Select(
-        label='Parameter to Analyze',
-        placeholder="Select one",
+        label='Select a Parameter',
+        # placeholder="Select one",
         id='dmc_select_parameter',
         value='WW_GROSS',
         data=[{'value' :i, 'label':i} for i in plot_cols],
@@ -74,7 +90,36 @@ dmc_select = (
         mb=10, 
     ),
 )
+dmc_select_film = (
+    dmc.Select(
+        label='Select a Film',
+        # placeholder="Select Film",
+        id='dmc_select_film',
+        value='Ant-Man',
+        data=[{'value' :i, 'label':i} for i in film_list],
+        w=200,
+        mb=10, 
+    ),
+)
 
+film_card =  dmc.Card(
+    children = [
+        dmc.CardSection(
+            children = [
+                dmc.List(
+                    children = [
+                    dmc.ListItem('', id='slope'),    
+                    dmc.ListItem('', id='intercept'), 
+                    dmc.ListItem('', id='correlation'), 
+                    dmc.ListItem('', id='stderr'),
+                    dmc.ListItem('', id='i_stderr')
+                    ],
+                size='lg'
+                )
+            ]
+        )
+    ]
+)
 #----- CALLBACK FUNCTIONS ------------------------------------------------------
 def get_plot(plot_parameter, mode):
     if mode == 'DATA':
@@ -129,30 +174,55 @@ app.layout =  dmc.MantineProvider([
     html.Div(),
     dmc.Grid(
         children = [
-            dmc.GridCol(dmc_select, span=3, offset = 1),
+            dmc.GridCol(dmc_select_param, span=3, offset = 1),
             # dmc.GridCol(radio_graph_type, span=3, offset = 1),
         ]
     ),
     dmc.Grid(
         children = [
             dmc.GridCol(dcc.Graph(id='graph_plot'), span=5, offset = 1),
-            dmc.GridCol(dcc.Graph(id='graph_norm'), span=5, offset = 1),
+            dmc.GridCol(dcc.Graph(id='graph_norm'), span=5, offset = 0),
         ]
     ),
+    html.Div(),
+    html.Hr(style=style_horiz_line),
+    dmc.Text('Data and Definitions', ta='center', style=style_h2, id='data_and_defs'),
+    html.Hr(style=style_horiz_line),
+    html.Div(),
+    dmc.Grid(
+        children = [
+            dmc.GridCol(dmc_select_film, span=3, offset = 7),
+            # dmc.GridCol(radio_graph_type, span=3, offset = 1),
+        ]
+    ),
+    dmc.Grid(children = [
+        dmc.GridCol(grid, span=6, offset = 1),
+        dmc.GridCol(film_card, span=3, offset = 6),
+        # dmc.GridCol(franchise_card, span=2, offset = 10)
+        ]
+    )
 ])
 
 @app.callback(
     Output('graph_plot', 'figure'),
     Output('graph_norm', 'figure'),
     # Output('dash_ag_table', 'rowData'),
-    # Output('data_and_defs','children'),
+    # # Output('data_and_defs','children'),
 
     Input('dmc_select_parameter', 'value'),
+    Input('dmc_select_film', 'value'),
+    # Input('dash_ag_table', 'rowData'),
+
+    # Input('dash_ag_table', 'rowData'),
 )
-def update_dashboard(parameter_name):
+def update_dashboard(parameter, film):
+    print(f'{parameter = }')
+    print(f'{film = }')
+    # print('\n\n')
     return (
-        get_plot(parameter_name, 'DATA'),
-        get_plot(parameter_name, 'NORMALIZED'),
+        get_plot(parameter, 'DATA'),
+        get_plot(parameter, 'NORMALIZED'),
+        # df_global.to_dicts()
     )
 if __name__ == '__main__':
     app.run_server(debug=True)
