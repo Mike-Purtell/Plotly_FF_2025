@@ -40,6 +40,7 @@ df_global = (
         'WEEK2_DROP_OFF', 'WW_GROSS'
     )
 )
+print(df_global.glimpse())
 film_list = sorted(df_global.unique('FILM')['FILM'].to_list())
 franchise_list = sorted(df_global.unique('FRANCHISE')['FRANCHISE'].to_list())
 plot_cols = sorted(df_global.select(cs.numeric().exclude('YEAR')).columns)
@@ -52,6 +53,26 @@ style_h2 = {'text-align': 'center', 'font-size': '32px',
             'fontFamily': 'Arial','font-weight': 'bold'}
 
 #----- GENERAL FUNCTIONS  ------------------------------------------------------
+def get_film_data(film, item):
+    print(f'{film = }')
+    print(f'{item = }')
+    result = (
+        df_global
+        .filter(pl.col('FILM') == film)
+        #.select(item)
+        [item]
+        [0]
+    )
+    print(f'{type(result) = }')
+    print(f'{result = }')
+    return str(result)
+# (
+#         df_global
+#         .filter(pl.col(item) == film)
+#         .select(item)
+#         [item]
+#         [0]
+#     )
 
 #----- DASHBOARD COMPONENTS ----------------------------------------------------
 grid = (
@@ -102,24 +123,106 @@ dmc_select_film = (
     ),
 )
 
-film_card =  dmc.Card(
-    children = [
-        dmc.CardSection(
-            children = [
-                dmc.List(
-                    children = [
-                    dmc.ListItem('', id='slope'),    
-                    dmc.ListItem('', id='intercept'), 
-                    dmc.ListItem('', id='correlation'), 
-                    dmc.ListItem('', id='stderr'),
-                    dmc.ListItem('', id='i_stderr')
-                    ],
-                size='lg'
-                )
-            ]
+# film_card =  dmc.Card(
+#     children = [
+#         dmc.CardSection(
+#             children = [
+#                 dmc.List(
+#                     children = [
+#                     dmc.ListItem('FRANCHISE', id='franchise'),    
+#                     dmc.ListItem('YEAR', id='year'), 
+#                     dmc.ListItem('SERIES_NUM', id='series_num'), 
+#                     dmc.ListItem('AUD_PCT_SCORE', id='aud_pct_score'),
+#                     dmc.ListItem('BUDGET', id='budget'),
+#                     dmc.ListItem('BUDGET_PCT_OPEN', id='budget_pct_open'),    
+#                     dmc.ListItem('BUD_PCT_REC', id='budget_pct_rec'), 
+#                     dmc.ListItem('CRIT_AUD_PCT', id='crit_aud_pct'), 
+#                     dmc.ListItem('CRIT_PCT_SCORE', id='crit_pct_score'),
+#                     dmc.ListItem('DOM_GROSS', id='dom_gross'),
+#                     dmc.ListItem('GROSS_PCT_OPEN', id='gross_pct_open'),    
+#                     dmc.ListItem('INT_GROSS', id='int_gross'), 
+#                     dmc.ListItem('WEEK1', id='week1'), 
+#                     dmc.ListItem('WEEK2', id='week2'),
+#                     dmc.ListItem('WEEK2_DROP_OFF', id='week2_drop_off'),
+#                     dmc.ListItem('WW_GROSS', id='ww_gross')
+#                     ],
+#                 size='lg'
+#                 )
+#             ]
+#         )
+#     ]
+# )
+
+# franchise_card =  dmc.Card(
+#     children = [
+#         dmc.CardSection(
+#             children = [
+#                 dmc.List(
+#                     children = [
+#                     dmc.ListItem('', id='slope'),    
+#                     dmc.ListItem('', id='intercept'), 
+#                     dmc.ListItem('', id='correlation'), 
+#                     dmc.ListItem('', id='stderr'),
+#                     dmc.ListItem('', id='i_stderr')
+#                     ],
+#                 size='lg'
+#                 )
+#             ]
+#         )
+#     ]
+# )
+card_names = ['FRANCHISE', 'YEAR', 'SERIES_NUM', 'AUD_PCT_SCORE', 'BUDGET', 
+    'BUDGET_PCT_OPEN', 'BUD_PCT_REC', 'CRIT_AUD_PCT', 'CRIT_PCT_SCORE', 
+    'DOM_GROSS', 'GROSS_PCT_OPEN', 'INT_GROSS', 'WEEK1', 'WEEK2', 
+    'WEEK2_DROP_OFF', 'WW_GROSS'
+]
+
+card_list = []
+for card in card_names:
+    card_list.append(
+        dmc.Card(
+        children = [
+            dmc.Group(
+                [
+                    dmc.Text(card, fw=500),
+                ],
+                justify="space-between",
+                mt="md",
+                mb="xs",
+            ),
+            dmc.Text(
+                card,
+                size='lg',
+                id=card.lower()
+            ),
+        ],
+        withBorder=True,
+        shadow='lg',
+        radius="md",
         )
-    ]
-)
+    )
+print(f'{len(card_list) = }')
+# franchise_name_card =  dmc.Card(
+#     children = [
+#         dmc.Group(
+#             [
+#                 dmc.Text('Franchise', fw=500),
+#             ],
+#             justify="space-between",
+#             mt="md",
+#             mb="xs",
+#         ),
+#         dmc.Text(
+#             franchise_list[0],
+#             size='lg',
+#             id='franchise'
+#         ),
+#     ],
+#     withBorder=True,
+#     shadow='lg',
+#     radius="md",
+# )
+
 #----- CALLBACK FUNCTIONS ------------------------------------------------------
 def get_plot(plot_parameter, mode):
     if mode == 'DATA':
@@ -186,19 +289,30 @@ app.layout =  dmc.MantineProvider([
     ),
     html.Div(),
     html.Hr(style=style_horiz_line),
-    dmc.Text('Data and Definitions', ta='center', style=style_h2, id='data_and_defs'),
+    dmc.Text('Mantine Cards', ta='center', style=style_h2, id='mantine_cards'),
     html.Hr(style=style_horiz_line),
     html.Div(),
     dmc.Grid(
         children = [
-            dmc.GridCol(dmc_select_film, span=3, offset = 7),
+            dmc.GridCol(dmc_select_film, span=2, offset = 0),
+            # dmc.GridCol(franchise_name_card, id='franchise', span=1, offset = 0),
+            dmc.GridCol(card_list[0], span=1, offset = 0),
+            dmc.GridCol(card_list[1], span=1, offset = 0),
+            dmc.GridCol(card_list[2], span=1, offset = 0),
+            dmc.GridCol(card_list[3], span=1, offset = 0),
+
             # dmc.GridCol(radio_graph_type, span=3, offset = 1),
         ]
     ),
+    html.Div(),
+    html.Hr(style=style_horiz_line),
+    dmc.Text('Data and Definitions', ta='center', style=style_h2, id='data_and_defs'),
+    html.Hr(style=style_horiz_line),
+    html.Div(),
     dmc.Grid(children = [
-        dmc.GridCol(grid, span=6, offset = 1),
-        dmc.GridCol(film_card, span=3, offset = 6),
-        # dmc.GridCol(franchise_card, span=2, offset = 10)
+        dmc.GridCol(grid, span=5, offset = 1),
+        #dmc.GridCol(franchise_card, span=2, offset = 1),
+        #dmc.GridCol(film_card, span=2, offset = 1)
         ]
     )
 ])
@@ -206,8 +320,23 @@ app.layout =  dmc.MantineProvider([
 @app.callback(
     Output('graph_plot', 'figure'),
     Output('graph_norm', 'figure'),
-    # Output('dash_ag_table', 'rowData'),
-    # # Output('data_and_defs','children'),
+    Output('franchise','children'),
+    Output('year','children'),
+    Output('series_num','children'),
+    Output('aud_pct_score','children'),
+    # Output('budget','children'),
+    # Output('budget_pct_open','children'),
+    # Output('budget_pct_rec','children'),
+    # Output('crit_aud_pct','children'),
+    # Output('crit_pct_score','children'),
+    # Output('dom_gross','children'),
+    # Output('gross_pct_open','children'),
+    # Output('budget_pct_open','children'),
+    # Output('int_gross','children'),
+    # Output('week1','children'), 
+    # Output('week2','children'),
+    # Output('week2_drop_off','children'),
+    # Output('ww_gross','children'),
 
     Input('dmc_select_parameter', 'value'),
     Input('dmc_select_film', 'value'),
@@ -218,11 +347,26 @@ app.layout =  dmc.MantineProvider([
 def update_dashboard(parameter, film):
     print(f'{parameter = }')
     print(f'{film = }')
-    # print('\n\n')
     return (
         get_plot(parameter, 'DATA'),
         get_plot(parameter, 'NORMALIZED'),
-        # df_global.to_dicts()
+        get_film_data(film, 'FRANCHISE'),
+        get_film_data(film, 'YEAR'),
+        get_film_data(film, 'SERIES_NUM'),
+        get_film_data(film, 'AUD_PCT_SCORE'),
+        # get_film_data(film, 'BUDGET'),
+        # get_film_data(film, 'BUDGET_PCT_OPEN'),
+        # get_film_data(film, 'BUD_PCT_REC'),
+        # get_plot(parameter, 'CRIT_AUD_PCT'),
+        # get_film_data(film, 'AUD_PCT_SCORE'),
+        # get_film_data(film, 'CRIT_PCT_SCORE'),
+        # get_film_data(film, 'DOM_GROSS'),
+        # get_plot(parameter, 'GROSS_PCT_OPEN'),
+        # get_film_data(film, 'INT_GROSS'),
+        # get_film_data(film, 'WEEK1'),
+        # get_film_data(film, 'WEEK2'),
+        # get_film_data(film, 'WEEK2_DROP_OFF'),
+        # get_film_data(film, 'WEEK2_DROP_OFF')
     )
 if __name__ == '__main__':
     app.run_server(debug=True)
