@@ -42,6 +42,15 @@ df_global = (
     )
 )
 print(df_global.glimpse())
+  
+
+df_franchise = (
+    df_global
+    .select('FRANCHISE', 'SERIES_NUM', 'YEAR', 'FILM')
+)
+
+print(df_franchise)
+
 film_list = sorted(df_global.unique('FILM')['FILM'].to_list())
 franchise_list = sorted(df_global.unique('FRANCHISE')['FRANCHISE'].to_list())
 plot_cols = sorted(df_global.select(cs.numeric().exclude('YEAR')).columns)
@@ -75,6 +84,15 @@ def get_film_data(film, item):
 #         [0]
 #     )
 
+def get_franchise(film):    
+    return(
+        df_global
+        .filter(pl.col('FILM') ==  film)
+        .head(1)
+        ['FRANCHISE']
+        [0]
+    )
+
 #----- DASHBOARD COMPONENTS ----------------------------------------------------
 grid = (
     dag.AgGrid(
@@ -101,6 +119,30 @@ grid = (
     ),
 )
 
+franchise_dag_table = (
+    dag.AgGrid(
+        rowData=df_franchise.to_dicts(), 
+        columnDefs=[
+            {
+                'field': i,
+                'filter': True,
+                'sortable': True,
+                'tooltipField': i,
+                'headerTooltip': dict_cols_reversed.get(i),
+            } 
+            for i in df_franchise.columns
+        ],
+        dashGridOptions={
+            'pagination': False,
+            'rowSelection': "multiple", 
+            'suppressRowClickSelection': True, 
+            'animateRows' : False
+        },
+        columnSize='autoSize',
+        columnSizeOptions={'skipHeader':True},
+        id='franchise_dag_table'
+    ),
+)
 dmc_select_param = (
     dmc.Select(
         label='Select a Parameter',
@@ -126,30 +168,30 @@ dmc_select_film = (
     ),
 )
 
-# franchise_card =  dmc.Card(
-#     children = [
-#         dmc.CardSection(
-#             children = [
-#                 dmc.List(
-#                     children = [
-#                     dmc.ListItem('', id='slope'),    
-#                     dmc.ListItem('', id='intercept'), 
-#                     dmc.ListItem('', id='correlation'), 
-#                     dmc.ListItem('', id='stderr'),
-#                     dmc.ListItem('', id='i_stderr')
-#                     ],
-#                 size='lg'
-#                 )
-#             ]
-#         )
-#     ]
-# )
+franchise_card =  dmc.Card(
+    children = [
+        dmc.CardSection(
+            children = [
+                dmc.List(
+                    children = [
+                    dmc.ListItem('', id='slope'),    
+                    dmc.ListItem('', id='intercept'), 
+                    dmc.ListItem('', id='correlation'), 
+                    dmc.ListItem('', id='stderr'),
+                    dmc.ListItem('', id='i_stderr')
+                    ],
+                size='lg'
+                )
+            ]
+        )
+    ]
+)
+
 card_names = ['FRANCHISE', 'YEAR', 'SERIES_NUM', 'AUD_PCT_SCORE', 'BUDGET', 
     'BUD_PCT_OPEN', 'BUD_PCT_REC', 'CRIT_AUD_PCT', 'CRIT_PCT_SCORE', 
     'DOM_GROSS', 'GROSS_PCT_OPEN', 'INT_GROSS', 'WEEK1', 'WEEK2', 
     'WEEK2_DROP_OFF', 'WW_GROSS'
 ]
-
 card_list = []
 for card in card_names:
     card_list.append(
@@ -305,13 +347,12 @@ app.layout =  dmc.MantineProvider([
     ),
     dmc.Space(h=30),
     html.Hr(style=style_horiz_line),
-    dmc.Text('Data and Definitions', ta='center', style=style_h2, id='data_and_defs'),
+    dmc.Text('Dash AG Tables', ta='center', style=style_h2, id='data_and_defs'),
     html.Hr(style=style_horiz_line),
     dmc.Space(h=30),
     dmc.Grid(children = [
         dmc.GridCol(grid, span=5, offset = 1),
-        #dmc.GridCol(franchise_card, span=2, offset = 1),
-        #dmc.GridCol(film_card, span=2, offset = 1)
+        dmc.GridCol(franchise_dag_table, span=4, offset = 1),
         ]
     ),
     dmc.Space(h=50),
@@ -337,16 +378,17 @@ app.layout =  dmc.MantineProvider([
     Output('week2_drop_off','children'),
     Output('ww_gross','children'),
     Output('mantine_cards','children'),
+    Output('franchise_dag_table','rowData'),
 
     Input('dmc_select_parameter', 'value'),
     Input('dmc_select_film', 'value'),
-    # Input('dash_ag_table', 'rowData'),
-
-    # Input('dash_ag_table', 'rowData'),
 )
 def update_dashboard(parameter, film):
     print(f'{parameter = }')
     print(f'{film = }')
+    franchise = get_franchise(film)
+
+
     return (
         get_plot(parameter, 'DATA'),
         get_plot(parameter, 'NORMALIZED'),
@@ -366,7 +408,13 @@ def update_dashboard(parameter, film):
         f'{get_film_data(film, 'WEEK2'):.0f} M$',
         f'{get_film_data(film, 'WEEK2_DROP_OFF'):.0%}',
         f'{get_film_data(film, 'WW_GROSS'):.0f} M$',
-        f'Mantine Cards for {film}'
+        f'Movie Cards for {film}',
+        (
+            df_franchise
+            .filter(pl.col('FRANCHISE') == franchise)
+            .sort('SERIES_NUM')
+            .to_dicts()
+        )
     )
 if __name__ == '__main__':
     app.run_server(debug=True)
