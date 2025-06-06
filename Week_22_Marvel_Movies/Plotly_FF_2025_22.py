@@ -17,8 +17,7 @@ short_col_names =[
 ]
 dict_cols = dict(zip(org_col_names, short_col_names))
 dict_cols_reversed = dict(zip(short_col_names, org_col_names))
-print(f'{len(dict_cols)}')
-print(f'{dict_cols = }')
+
 #----- READ & CLEAN DATASET ----------------------------------------------------
 df_global = (
     pl.read_csv('Marvel-Movies.csv')
@@ -41,15 +40,11 @@ df_global = (
         'WEEK2_DROP_OFF', 'WW_GROSS'
     )
 )
-print(df_global.glimpse())
-  
 
 df_franchise = (
     df_global
     .select('FRANCHISE', 'SERIES_NUM', 'YEAR', 'FILM')
 )
-
-print(df_franchise)
 
 film_list = sorted(df_global.unique('FILM')['FILM'].to_list())
 franchise_list = sorted(df_global.unique('FRANCHISE')['FRANCHISE'].to_list())
@@ -64,25 +59,13 @@ style_h2 = {'text-align': 'center', 'font-size': '32px',
 
 #----- GENERAL FUNCTIONS  ------------------------------------------------------
 def get_film_data(film, item):
-    print(f'{film = }')
-    print(f'{item = }')
     result = (
         df_global
         .filter(pl.col('FILM') == film)
-        #.select(item)
         [item]
         [0]
     )
-    print(f'{type(result) = }')
-    print(f'{result = }')
     return result
-# (
-#         df_global
-#         .filter(pl.col(item) == film)
-#         .select(item)
-#         [item]
-#         [0]
-#     )
 
 def get_franchise(film):    
     return(
@@ -114,7 +97,6 @@ grid = (
             'animateRows' : False
         },
         columnSize='autoSize',
-        columnSizeOptions={'skipHeader':True},
         id='dash_ag_table'
     ),
 )
@@ -139,14 +121,13 @@ franchise_dag_table = (
             'animateRows' : False
         },
         columnSize='autoSize',
-        columnSizeOptions={'skipHeader':True},
         id='franchise_dag_table'
     ),
 )
 dmc_select_param = (
     dmc.Select(
         label='Select a Parameter',
-        # placeholder="Select one",
+        placeholder="Select one",
         id='dmc_select_parameter',
         value='WW_GROSS',
         data=[{'value' :i, 'label':i} for i in plot_cols],
@@ -166,25 +147,6 @@ dmc_select_film = (
         mb=30, 
         size='xl'
     ),
-)
-
-franchise_card =  dmc.Card(
-    children = [
-        dmc.CardSection(
-            children = [
-                dmc.List(
-                    children = [
-                    dmc.ListItem('', id='slope'),    
-                    dmc.ListItem('', id='intercept'), 
-                    dmc.ListItem('', id='correlation'), 
-                    dmc.ListItem('', id='stderr'),
-                    dmc.ListItem('', id='i_stderr')
-                    ],
-                size='lg'
-                )
-            ]
-        )
-    ]
 )
 
 card_names = ['FRANCHISE', 'YEAR', 'SERIES_NUM', 'AUD_PCT_SCORE', 'BUDGET', 
@@ -208,41 +170,14 @@ for card in card_names:
             dmc.Text(
                 card,
                 size='lg',
-                # Text size="xl"
                 id=card.lower()
             ),
         ],
         withBorder=True,
         shadow='lg',
         radius='lg',
-        # styles={
-        #     "root": {'backgroundColor': 'red'},
-        #     'label': {'color': 'blue', 'fontSize': 50}
-        #     # nner": {"fontSize": 50},
-        # },
         )
     )
-print(f'{len(card_list) = }')
-# franchise_name_card =  dmc.Card(
-#     children = [
-#         dmc.Group(
-#             [
-#                 dmc.Text('Franchise', fw=500),
-#             ],
-#             justify="space-between",
-#             mt="md",
-#             mb="xs",
-#         ),
-#         dmc.Text(
-#             franchise_list[0],
-#             size='lg',
-#             id='franchise'
-#         ),
-#     ],
-#     withBorder=True,
-#     shadow='lg',
-#     radius="md",
-# )
 
 #----- CALLBACK FUNCTIONS ------------------------------------------------------
 def get_plot(plot_parameter, mode):
@@ -283,7 +218,6 @@ def get_plot(plot_parameter, mode):
 
     fig.update_layout(
         template='simple_white',
-        # title_text=plot_parameter,
         yaxis=dict(title=dict(text=f'{plot_parameter} {mode}')),
         legend_title='FRANCHISE'
     )
@@ -300,7 +234,6 @@ app.layout =  dmc.MantineProvider([
     dmc.Grid(
         children = [
             dmc.GridCol(dmc_select_param, span=4, offset = 1),
-            # dmc.GridCol(radio_graph_type, span=3, offset = 1),
         ]
     ),
     dmc.Grid(
@@ -309,12 +242,10 @@ app.layout =  dmc.MantineProvider([
             dmc.GridCol(dcc.Graph(id='graph_norm'), span=5, offset = 0),
         ]
     ),
-    # html.Div(),
     dmc.Space(h=30),
     html.Hr(style=style_horiz_line),
     dmc.Text('Mantine Cards', ta='center', style=style_h2, id='mantine_cards'),
     html.Hr(style=style_horiz_line),
-    # html.Div(),
     dmc.Space(h=30),
     dmc.Grid(
         children = [
@@ -350,11 +281,30 @@ app.layout =  dmc.MantineProvider([
     dmc.Text('Dash AG Tables', ta='center', style=style_h2, id='data_and_defs'),
     html.Hr(style=style_horiz_line),
     dmc.Space(h=30),
+    dmc.Grid([
+        dmc.GridCol(
+            span=5, offset=1,
+            children =[
+                dmc.Text(
+                    'All Data Table',
+                    size='xl', fw=700,
+                )
+            ]
+        ),
+        dmc.GridCol(
+            span=5, offset=1,
+            children =[
+                dmc.Text(
+                    'Franchise Table',
+                    size='xl', fw=700
+                )
+            ]
+        )
+    ]),
     dmc.Grid(children = [
-        dmc.GridCol(grid, span=5, offset = 1),
-        dmc.GridCol(franchise_dag_table, span=4, offset = 1),
-        ]
-    ),
+        dmc.GridCol(grid, span=5, offset=1),
+        dmc.GridCol(franchise_dag_table, span=4, offset=1)
+    ]),
     dmc.Space(h=50),
 ])
 
@@ -384,11 +334,7 @@ app.layout =  dmc.MantineProvider([
     Input('dmc_select_film', 'value'),
 )
 def update_dashboard(parameter, film):
-    print(f'{parameter = }')
-    print(f'{film = }')
     franchise = get_franchise(film)
-
-
     return (
         get_plot(parameter, 'DATA'),
         get_plot(parameter, 'NORMALIZED'),
