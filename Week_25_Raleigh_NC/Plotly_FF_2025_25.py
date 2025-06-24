@@ -6,8 +6,16 @@ import dash_mantine_components as dmc
 from dash_ag_grid import AgGrid
 dash._dash_renderer._set_react_version('18.2.0')
 
-#----- GATHER AND CLEAN DATA ---------------------------------------------------
+# TODO:
+#      filter map data to only show projects in selected zip code
+#      adjust width on info table, ITEM column more narrow VALUE column more wide
+#      rename ID as PROJECT_ID
+#      change hover data to only show PROJECT_ID
+#      remove selector of residenial vs non-res, show both 
+#      reorder rows in the info table, by df.select prior to transpose
+#      add usefule formatting to info table
 
+#----- GATHER AND CLEAN DATA ---------------------------------------------------
 df_zip = pl.read_csv('ZIP_INFO.csv') # has descriptions of each zip code
 
 df = (
@@ -101,67 +109,31 @@ def get_info_table(id=271601):
             columnDefs=column_defs,
             defaultColDef={"sortable": True, "filter": True, "resizable": True},
             columnSize="sizeToFit",
-            # getRowId='params.data.State',
-            # dashGridOptions={
-            #     # 'rowSelection': 'single',
-            #     'animateRows': False,
-            #     'suppressCellSelection': True,
-            #     'enableCellTextSelection': True,
-            # },
-            # HEIGHT IS SET TO HIGH VALUE TO SHOW MORE ROWS
             style={'height': '800px'}, # , 'width': '150%'},
         )
     )
 
-def get_px_scatter_map(zip_code, this_map_style, property_type):
+def get_px_scatter_map(zip_code, this_map_style):
     ''' returns plotly map_libre, type streets, magenta_r sequential  '''
-    
-    color_dict={}
-    if property_type == 'Residential':         
-        color_dict = {
-            'BRIGHT'    : 'blue',
-            'DIM'       : 'lightgray'
-        }
-    else:
-        color_dict = {
-            'BRIGHT'   : 'green',
-            'DIM'      : 'lightgray'
-        }
+    print(df.filter(pl.col('ZIP') == zip_code))
+    color_dict = {
+            'Non-Residential'    : 'green',
+            'Residential'       : 'blue'
+    }
+
     df_map = ( # set COLOR TYPE, and filter by residential or non-residential
         df
-            .with_columns(
-                COLOR_TYPE = 
-                    pl.when(pl.col('ZIP') ==  zip_code)
-                    .then(
-                        pl.when(pl.col('TYPE') == property_type)
-                        .then(pl.lit('BRIGHT'))
-                        .otherwise(pl.lit('DIM'))
-                    )
-                    .otherwise(pl.lit('DIM'))
-            )
-            .with_columns(
-                MARKER_SIZE = 
-                    pl.when(
-                        (
-                            (pl.col('ZIP') ==  zip_code) &
-                            (pl.col('TYPE') == property_type)
-                        )
-                    )
-                    .then(pl.lit(4))
-                    .otherwise(pl.lit(1))
-            )
+        .filter(pl.col('ZIP') == zip_code)
     )
 
     fig = px.scatter_map(
         df_map,
-        title = f'ZIP CODE: {zip_code}  {property_type}',
+        title = f'ZIP CODE: {zip_code}',
         lat='LAT',
         lon='LONG',
-        size='MARKER_SIZE', 
-        color='COLOR_TYPE',
+        color='TYPE',
         color_discrete_map= color_dict,
         color_continuous_scale='Magenta_r',
-        size_max=10,
         zoom=10,
         map_style=this_map_style,       
         custom_data=[
@@ -169,11 +141,6 @@ def get_px_scatter_map(zip_code, this_map_style, property_type):
             'ZIP',                #  customdata[1]
             'TYPE',               #  customdata[2]
             'EXIST_OR_NEW',       #  customdata[3]
-            'EST_COST',           #  customdata[4]
-            'WORK',               #  customdata[5]
-            'STATUS',             #  customdata[6]
-            'CONTRACTOR',         #  customdata[7]
-            'PROP_USE',           #  customdata[8]
         ],
         height=800, width =800
     )
@@ -182,13 +149,9 @@ def get_px_scatter_map(zip_code, this_map_style, property_type):
         hovertemplate =
             '<b>ID:</b> %{customdata[0]}<br>' + 
             '<b>ZIP:</b> %{customdata[1]}<br>' + 
-            '<b>TYPE:</b> %{customdata[2]}, %{customdata[3]}<br>' + 
-            '<b>EST_COST:</b> $%{customdata[4]:,.0f}<br>' + 
-            '<b>WORK:</b> %{customdata[5]}<br>' + 
-            '<b>STATUS:</b> %{customdata[6]}<br>' + 
-            '<b>CONTRACTOR:</b> %{customdata[7]}<br>' + 
-            '<b>PROPOSED USE:</b> %{customdata[8]}<br>' + 
-            '<extra></extra>'
+            '<b>TYPE:</b> %{customdata[2]},<br>%{customdata[3]}<br>' + 
+            '<extra></extra>',
+        marker=dict(size=15)
     )
     fig.update_layout(
         hoverlabel=dict(
@@ -215,21 +178,6 @@ dmc_select_map_type = (
     ),
 )
 
-dmc_radio_property_type = (
-    dmc.RadioGroup(
-        label='Property Type',
-        id='property_type',
-        value='Residential',
-        children=dmc.Group(
-            [dmc.Radio(i, value=i) for i in ['Residential', 'Non-Residential']], 
-        ),
-        w=400,
-        size="lg",
-        mt=30,
-        my=10
-    ),
-)
-
 #----- DASH APPLICATION STRUCTURE-----------------------------------------------
 app = Dash()
 app.layout =  dmc.MantineProvider([
@@ -242,12 +190,11 @@ app.layout =  dmc.MantineProvider([
     dmc.Grid(
         children = [
             dmc.GridCol(dmc_select_map_type, span=2, offset = 1),
-            dmc.GridCol(dmc_radio_property_type, span=2, offset = 2),
         ]
     ),
     dmc.Grid(  
         children = [ 
-            dmc.GridCol(get_zip_table(), span=2, offset=1),
+            dmc.GridCol(get_zip_table(), span=1, offset=1),
             dmc.GridCol(dcc.Graph(id='px_scatter_map'), span=4, offset=1),
             dmc.GridCol(get_info_table(), span=3, offset=1)
         ]
@@ -260,10 +207,9 @@ app.layout =  dmc.MantineProvider([
     Output('info_table', 'rowData'),
     Input('zip_code_table', 'cellClicked'),
     Input('id_map_style', 'value'),
-    Input('property_type', 'value'),
     Input('px_scatter_map', 'hoverData'),
 )
-def update_dashboard(zip_code, map_style, property_type, hover_data):
+def update_dashboard(zip_code, map_style, hover_data):
     if zip_code is None:
         zip_code=zip_code_list[0]
     else:
@@ -275,7 +221,7 @@ def update_dashboard(zip_code, map_style, property_type, hover_data):
         selected_id = hover_data['points'][0]['customdata'][0]
 
     print(f'{selected_id = }')
-    px_scatter_map = get_px_scatter_map(zip_code, map_style, property_type)
+    px_scatter_map = get_px_scatter_map(zip_code, map_style)
     # info_table = get_info_table(selected_id)
     info_table_df = (
         df
