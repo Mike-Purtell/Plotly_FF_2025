@@ -6,15 +6,6 @@ import dash_mantine_components as dmc
 from dash_ag_grid import AgGrid
 dash._dash_renderer._set_react_version('18.2.0')
 
-# TODO:
-#      filter map data to only show projects in selected zip code
-#      adjust width on info table, ITEM column more narrow VALUE column more wide
-#      rename ID as PROJECT_ID
-#      change hover data to only show PROJECT_ID
-#      remove selector of residenial vs non-res, show both 
-#      reorder rows in the info table, by df.select prior to transpose
-#      add usefule formatting to info table
-
 #----- GATHER AND CLEAN DATA ---------------------------------------------------
 df_zip = pl.read_csv('ZIP_INFO.csv') # has descriptions of each zip code
 
@@ -24,7 +15,7 @@ df = (
         ignore_errors=True
     )
     .select(
-        ID = pl.col('OBJECTID'),
+        PROJECT_ID = pl.col('OBJECTID'),
         WORK = pl.col('workclass'),
         PROP_DESC = pl.col('proposedworkdescription'),
         TYPE = pl.col('permitclassmapped'),   # commercial or residential
@@ -45,8 +36,6 @@ df = (
         how='left'
     )
 )
-print(df.glimpse())
-
 
 #----- GLOBALS -----------------------------------------------------------------
 style_horiz_line = {'border': 'none', 'height': '4px', 
@@ -67,8 +56,19 @@ map_styles = ['basic', 'carto-darkmatter', 'carto-darkmatter-nolabels',
 ]
 
 #----- FUNCTIONS----------------------------------------------------------------
+
+def get_info_table_df(df, selected_id):
+    return (
+        df
+        .filter(pl.col('PROJECT_ID') ==  selected_id)
+        .transpose(
+            include_header=True, header_name='ITEM'
+        )
+        .rename({'column_0':'VALUE'})
+    )
+
 def get_zip_info(zip_code):
-    return df_zip.filter(pl.col('ZIP')== zip_code)['INFO'].item()
+    return df_zip.filter(pl.col('ZIP')== zip_code)['ZIP_INFO'].item()
 
 def get_zip_table():
     df_zip_codes =pl.DataFrame({
@@ -85,42 +85,58 @@ def get_zip_table():
             columnSize="sizeToFit",
             getRowId='params.data.State',
             # HEIGHT IS SET TO HIGH VALUE TO SHOW MORE ROWS
-            style={'height': '600px'} # , 'width': '150%'},
+            style={'height': '600px', 'width': '150%'},
         )
     )
 def get_info_table(id=271601):
-    print(f'{id = }')
-
+    select_cols = [
+        'PROJECT_ID',  'PROP_DESC',  'PROP_USE', 'WORK', 'TYPE', 'CONTRACTOR', 
+        'EST_COST', 'FEE', 'LAT', 'LONG',  'STATUS', 'EXIST_OR_NEW', 'ZIP', 
+        'ZIP_INFO'
+    ]
     df_info = (
         df
-        .filter(pl.col('ID') ==  id)
+        .select(select_cols)
+        .filter(pl.col('PROJECT_ID') ==  id)
         .transpose(
-            include_header=True, header_name='ITEM'
+            include_header=True, header_name='ITEM',
         )
         .rename({'column_0':'VALUE'})
     )
-    print(df_info)
-    # row_data = df_info.to_dicts()
-    column_defs = [{"headerName": col, "field": col} for col in df_info.columns]
+
+    # set specific column width, 1st col narrow, 2nd column wide
+    column_defs = [
+        {"field": "ITEM", "headerName": "ITEM", "width": 80},
+        {
+            "field": "VALUE", 
+            "headerName": "VALUE", 
+            "width": 200, 
+            "wrapText": True,
+            "cellStyle": {
+                "wordBreak": "normal",  # ensures wrapping at word boundaries
+                "lineHeight": "unset",   # optional: removes extra spacing
+            }
+        },
+    ]
     return (
         AgGrid(
             id='info_table',
             rowData=df_info.to_dicts(),
+            # className="ag-theme-custom",  # Apply the custom theme
+            dashGridOptions = {"rowHeight": 50},
             columnDefs=column_defs,
             defaultColDef={"sortable": True, "filter": True, "resizable": True},
             columnSize="sizeToFit",
-            style={'height': '800px'}, # , 'width': '150%'},
+            style={'height': '800px'}
         )
     )
 
 def get_px_scatter_map(zip_code, this_map_style):
     ''' returns plotly map_libre, type streets, magenta_r sequential  '''
-    print(df.filter(pl.col('ZIP') == zip_code))
     color_dict = {
             'Non-Residential'    : 'green',
             'Residential'       : 'blue'
     }
-
     df_map = ( # set COLOR TYPE, and filter by residential or non-residential
         df
         .filter(pl.col('ZIP') == zip_code)
@@ -137,7 +153,7 @@ def get_px_scatter_map(zip_code, this_map_style):
         zoom=10,
         map_style=this_map_style,       
         custom_data=[
-            'ID',                 #  customdata[0]
+            'PROJECT_ID',                 #  customdata[0]
             'ZIP',                #  customdata[1]
             'TYPE',               #  customdata[2]
             'EXIST_OR_NEW',       #  customdata[3]
@@ -147,7 +163,7 @@ def get_px_scatter_map(zip_code, this_map_style):
     #----- APPLY HOVER TEMPLATE ------------------------------------------------
     fig.update_traces(
         hovertemplate =
-            '<b>ID:</b> %{customdata[0]}<br>' + 
+            '<b>PROJECT_ID:</b> %{customdata[0]}<br>' + 
             '<b>ZIP:</b> %{customdata[1]}<br>' + 
             '<b>TYPE:</b> %{customdata[2]},<br>%{customdata[3]}<br>' + 
             '<extra></extra>',
@@ -159,7 +175,7 @@ def get_px_scatter_map(zip_code, this_map_style):
             font_size=16,
             font_family='courier',
         ),
-        showlegend=False
+        showlegend=True
     )
     return fig
 
@@ -211,27 +227,21 @@ app.layout =  dmc.MantineProvider([
 )
 def update_dashboard(zip_code, map_style, hover_data):
     if zip_code is None:
-        zip_code=zip_code_list[0]
+        zip_code = zip_code_list[0]
     else:
-        zip_code = zip_code["value"]
-    selected_id=271601
-    if hover_data is None:
-        pass
-    else:
+        zip_code = zip_code['value']
+
+    selected_id = (
+        df
+        .sort('PROJECT_ID')
+        .item(0,'PROJECT_ID')
+    )
+    if hover_data is not None:
         selected_id = hover_data['points'][0]['customdata'][0]
 
-    print(f'{selected_id = }')
     px_scatter_map = get_px_scatter_map(zip_code, map_style)
-    # info_table = get_info_table(selected_id)
-    info_table_df = (
-        df
-        .filter(pl.col('ID') ==  selected_id)
-        .transpose(
-            include_header=True, header_name='ITEM'
-        )
-        .rename({'column_0':'VALUE'})
-    )
-    print(info_table_df)
+    info_table_df = get_info_table_df(df, selected_id)
+
     return (
         px_scatter_map, 
         f'Zip Code {zip_code}: {get_zip_info(zip_code)}',
