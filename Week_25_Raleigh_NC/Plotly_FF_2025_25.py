@@ -54,6 +54,7 @@ map_styles = ['basic', 'carto-darkmatter', 'carto-darkmatter-nolabels',
     'carto-voyager-nolabels', 'dark', 'light', 'open-street-map', 
     'outdoors', 'satellite', 'satellite-streets', 'streets', 'white-bg'
 ]
+legend_font_size = 20
 
 #----- FUNCTIONS----------------------------------------------------------------
 
@@ -145,7 +146,6 @@ def get_px_scatter_map(zip_code, this_map_style):
     fig = px.scatter_map(
         df_map,
         opacity=0.5,
-        title=f'ZIP CODE: {zip_code}',
         lat='LAT',
         lon='LONG',
         color='TYPE',
@@ -176,7 +176,18 @@ def get_px_scatter_map(zip_code, this_map_style):
             font_size=16,
             font_family='courier',
         ),
-        showlegend=True
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='center',
+            x=0.5,
+            font=dict(family='Arial', size=legend_font_size, color='black'),
+            title=dict(
+                text=f'ZIP CODE {zip_code}',
+                font=dict(family='Arial', size=legend_font_size, color='black'),
+            )
+        )
     )
     return fig
 
@@ -226,18 +237,11 @@ app.layout =  dmc.MantineProvider([
     Input('id_map_style', 'value'),
 )
 def update_map(zip_code, map_style):
-    if zip_code is None:
-        zip_code = zip_code_list[0]
-    else:
-        zip_code = zip_code['value']
-
-    px_scatter_map = get_px_scatter_map(zip_code, map_style)
-
-    return (
-        px_scatter_map, 
-        f'Zip Code {zip_code}: {get_zip_info(zip_code)}'
-        # info_table_df.to_dicts()
-    )
+    zip = zip_code_list[0]  # default
+    if zip_code is not None:
+        zip = zip_code['value']
+    px_scatter_map = get_px_scatter_map(zip, map_style)
+    return px_scatter_map, f'Zip Code {zip}: {get_zip_info(zip)}'
 
 # second call back updates the info table based on hover data
 @app.callback(
@@ -245,18 +249,11 @@ def update_map(zip_code, map_style):
     Input('px_scatter_map', 'hoverData'),
 )
 def update_info_table(hover_data):
-    selected_id = (
-        df
-        .sort('PROJECT_ID')
-        .item(0,'PROJECT_ID')
-    )
+    selected_id = df.sort('PROJECT_ID').item(0,'PROJECT_ID') # default
     if hover_data is not None:
         selected_id = hover_data['points'][0]['customdata'][0]
     info_table_df = get_info_table_df(df, selected_id)
-
-    return (
-        info_table_df.to_dicts()
-    )
+    return info_table_df.to_dicts()
 
 if __name__ == '__main__':
     app.run(debug=True)
