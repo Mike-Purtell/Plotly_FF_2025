@@ -218,20 +218,33 @@ app.layout =  dmc.MantineProvider([
     ),
 ])
 
+# first call back updates the map based on zip code selected
 @app.callback(
     Output('px_scatter_map', 'figure'),
     Output('zip_code', 'children'),
-    Output('info_table', 'rowData'),
     Input('zip_code_table', 'cellClicked'),
     Input('id_map_style', 'value'),
-    Input('px_scatter_map', 'hoverData'),
 )
-def update_dashboard(zip_code, map_style, hover_data):
+def update_map(zip_code, map_style):
     if zip_code is None:
         zip_code = zip_code_list[0]
     else:
         zip_code = zip_code['value']
 
+    px_scatter_map = get_px_scatter_map(zip_code, map_style)
+
+    return (
+        px_scatter_map, 
+        f'Zip Code {zip_code}: {get_zip_info(zip_code)}'
+        # info_table_df.to_dicts()
+    )
+
+# second call back updates the info table based on hover data
+@app.callback(
+    Output('info_table', 'rowData'),
+    Input('px_scatter_map', 'hoverData'),
+)
+def update_info_table(hover_data):
     selected_id = (
         df
         .sort('PROJECT_ID')
@@ -239,13 +252,9 @@ def update_dashboard(zip_code, map_style, hover_data):
     )
     if hover_data is not None:
         selected_id = hover_data['points'][0]['customdata'][0]
-
-    px_scatter_map = get_px_scatter_map(zip_code, map_style)
     info_table_df = get_info_table_df(df, selected_id)
 
     return (
-        px_scatter_map, 
-        f'Zip Code {zip_code}: {get_zip_info(zip_code)}',
         info_table_df.to_dicts()
     )
 
