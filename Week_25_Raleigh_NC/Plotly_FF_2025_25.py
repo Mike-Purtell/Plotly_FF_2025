@@ -144,7 +144,8 @@ def get_px_scatter_map(zip_code, this_map_style):
 
     fig = px.scatter_map(
         df_map,
-        title = f'ZIP CODE: {zip_code}',
+        opacity=0.5,
+        title=f'ZIP CODE: {zip_code}',
         lat='LAT',
         lon='LONG',
         color='TYPE',
