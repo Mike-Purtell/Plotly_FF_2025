@@ -66,6 +66,7 @@ def get_info_table_df(df, selected_id):
             include_header=True, header_name='ITEM'
         )
         .rename({'column_0':'VALUE'})
+        .sort('ITEM')
     )
 
 def get_zip_info(zip_code):
@@ -73,7 +74,7 @@ def get_zip_info(zip_code):
 
 def get_zip_table():
     df_zip_codes =pl.DataFrame({
-        'SELECT A ZIP CODE:' : zip_code_list
+        'ZIP CODE:' : zip_code_list
     })
     row_data = df_zip_codes.to_dicts()
     column_defs = [{"headerName": col, "field": col} for col in df_zip_codes.columns]
@@ -107,15 +108,24 @@ def get_info_table(id=271601):
 
     # set specific column width, 1st col narrow, 2nd column wide
     column_defs = [
-        {"field": "ITEM", "headerName": "ITEM", "width": 80},
         {
-            "field": "VALUE", 
-            "headerName": "VALUE", 
-            "width": 200, 
-            "wrapText": True,
-            "cellStyle": {
-                "wordBreak": "normal",  # ensures wrapping at word boundaries
-                "lineHeight": "unset",   # optional: removes extra spacing
+            'field': 'ITEM', 
+            'headerName': 'ITEM', 
+            'width': 100, 
+            'wrapText': True,
+            'cellStyle': {
+                'wordBreak': 'normal',  # ensures wrapping at word boundaries
+                'lineHeight': 'unset',   # optional: removes extra spacing
+            }
+        },
+        {
+            'field': 'VALUE', 
+            'headerName': 'VALUE', 
+            'width': 300, 
+            'wrapText': True,
+            'cellStyle': {
+                'wordBreak': 'normal',  # ensures wrapping at word boundaries
+                'lineHeight': 'unset',   # optional: removes extra spacing
             }
         },
     ]
@@ -123,12 +133,10 @@ def get_info_table(id=271601):
         AgGrid(
             id='info_table',
             rowData=df_info.to_dicts(),
-            # className="ag-theme-custom",  # Apply the custom theme
-            dashGridOptions = {"rowHeight": 50},
             columnDefs=column_defs,
-            defaultColDef={"sortable": True, "filter": True, "resizable": True},
+            defaultColDef={'sortable': False, 'filter': False, 'resizable': False},
             columnSize="sizeToFit",
-            style={'height': '800px'}
+            style={'height': '700px'},
         )
     )
 
@@ -184,7 +192,7 @@ def get_px_scatter_map(zip_code, this_map_style):
             x=0.5,
             font=dict(family='Arial', size=legend_font_size, color='black'),
             title=dict(
-                text=f'ZIP CODE {zip_code}',
+                text=f'<b>ZIP CODE {zip_code}</b>',
                 font=dict(family='Arial', size=legend_font_size, color='black'),
             )
         )
@@ -202,24 +210,27 @@ dmc_select_map_type = (
         maxDropdownHeight=600,
         w=400,
         mb=10, 
-        size='xl'
+        size='xl',
+        style={'display': 'flex', 'alignItems': 'left', 'gap': '10px'},
     ),
 )
+
 
 #----- DASH APPLICATION STRUCTURE-----------------------------------------------
 app = Dash()
 app.layout =  dmc.MantineProvider([
     dmc.Space(h=30),
     html.Hr(style=style_horiz_line),
-    dmc.Text('Raleigh North Carolina - Contractor Data', ta='center', style=style_h2),
+    dmc.Text('Raleigh North Carolina - Construction Permits', ta='center', style=style_h2),
     dmc.Text('', ta='center', style=style_h3, id='zip_code'),
     html.Hr(style=style_horiz_line),
     dmc.Space(h=30),
     dmc.Grid(
         children = [
-            dmc.GridCol(dmc_select_map_type, span=2, offset = 1),
+            dmc.GridCol(dmc_select_map_type, span=4, offset = 4),
         ]
     ),
+    dmc.Space(h=30),
     dmc.Grid(  
         children = [ 
             dmc.GridCol(get_zip_table(), span=1, offset=1),
@@ -229,28 +240,29 @@ app.layout =  dmc.MantineProvider([
     ),
 ])
 
-# first call back updates the map based on zip code selected
+# callback #1 update scatter_map, filtered with selected zip code
 @app.callback(
     Output('px_scatter_map', 'figure'),
     Output('zip_code', 'children'),
     Input('zip_code_table', 'cellClicked'),
+    #  Input('zip_code_table', 'cellDoubleClicked'),
     Input('id_map_style', 'value'),
 )
 def update_map(zip_code, map_style):
     zip = zip_code_list[0]  # default
-    if zip_code is not None:
+    if zip_code is not None: # replace default if zip_code has data
         zip = zip_code['value']
     px_scatter_map = get_px_scatter_map(zip, map_style)
     return px_scatter_map, f'Zip Code {zip}: {get_zip_info(zip)}'
 
-# second call back updates the info table based on hover data
+# callback #2 update info table using hover data
 @app.callback(
     Output('info_table', 'rowData'),
     Input('px_scatter_map', 'hoverData'),
 )
 def update_info_table(hover_data):
     selected_id = df.sort('PROJECT_ID').item(0,'PROJECT_ID') # default
-    if hover_data is not None:
+    if hover_data is not None:  # replace default if hover_data has data
         selected_id = hover_data['points'][0]['customdata'][0]
     info_table_df = get_info_table_df(df, selected_id)
     return info_table_df.to_dicts()
