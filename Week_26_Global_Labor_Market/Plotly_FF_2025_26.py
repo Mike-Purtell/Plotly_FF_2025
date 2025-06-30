@@ -4,9 +4,7 @@ import polars.selectors as cs
 import dash
 from dash import Dash, dcc, html, Input, Output
 import dash_mantine_components as dmc
-from dash_ag_grid import AgGrid
 dash._dash_renderer._set_react_version('18.2.0')
-
 
 #----- GATHER DATA -------------------------------------------------------------
 df_gender_parity_mgmt = (
@@ -68,24 +66,20 @@ style_horiz_line = {'border': 'none', 'height': '4px',
 
 style_h2 = {'text-align': 'center', 'font-size': '32px', 
             'fontFamily': 'Arial','font-weight': 'bold'}
-style_h3 = {'text-align': 'center', 'font-size': '24px', 
-            'fontFamily': 'Arial','font-weight': 'normal'}
 
 legend_font_size = 10
-min_year = [
+min_year = min([
     df_gender_parity_mgmt['YEAR'].min(),
     df_gender_pay_gap['YEAR'].min(),
     df_labor_productivity['YEAR'].min(),
     df_unemployment['YEAR'].min(),
-]
-max_year = [
+])
+max_year = max([
     df_gender_parity_mgmt['YEAR'].max(),
     df_gender_pay_gap['YEAR'].max(),
     df_labor_productivity['YEAR'].max(),
     df_unemployment['YEAR'].max()
-]
-print(f'{min_year = }')
-print(f'{max_year = }')
+])
 
 dataset_names = [
     'Management Gender Parity',
@@ -93,11 +87,15 @@ dataset_names = [
     'Labor Productivity',
     'Unemployment'
 ]
-print(dataset_names)
 
 #----- FUNCTIONS----------------------------------------------------------------
-def get_px_line(df, title, norm):
-    df = df.select(first:=cs.by_name('YEAR'), ~first)
+def get_px_line(df, x_range, title, norm):
+    df = (
+        df
+        .select(first:=cs.by_name('YEAR'), ~first)
+        .filter(pl.col('YEAR') >= x_range[0])
+        .filter(pl.col('YEAR') <= x_range[1])
+    )
     df_cols = df.columns
     if norm:  # normalize the data, relative to the dataset's first year
         title = title + ' -- NORMALIZED'
@@ -108,7 +106,7 @@ def get_px_line(df, title, norm):
                     ((100*pl.col(col)/pl.col(col).first()-100)).alias(col)
                 )
             )
-        y_title='Normalized Values'
+        y_title='PERCENT CHANGE'
     else:
         title = title + ' -- RAW DATA'
         y_title='Raw Data Values'
@@ -140,8 +138,8 @@ def get_px_line(df, title, norm):
                 font=dict(family='Arial', size=legend_font_size, color='black'),
             )
         ),
-        xaxis_title='',  # use blank instead of 'Year'.  Unit is obvious
-        yaxis_title=y_title,  # use blank instead of 'Year'.  Unit is obvious
+        xaxis_title='',  # normally for showing units, but YEAR is obvious
+        yaxis_title=y_title, 
         hovermode="x unified",
     )
     return fig
@@ -162,35 +160,62 @@ def get_df(dataset_name):
 def get_dataset_radio_picker():
     return(
     dmc.RadioGroup(
-            children=dmc.Group([dmc.Radio(l, value=l) for l in dataset_names], my=10),
-            id='dataset_radio',
-            value=dataset_names[0],
-            label="Select Dataset:",
-            size="sm",
-            mb=10,
+        children=dmc.Group(
+            [dmc.Radio(item, value=item) for item in dataset_names]),
+        id='dataset_radio',
+        value=dataset_names[0],
+        label='',
         ),
     )
 
+def get_range_slider():
+    range_year = max_year - min_year
+    return(
+        dmc.RangeSlider(
+            id='range-slider-input',
+            min=min_year,
+            max=max_year,
+            value=[min_year, max_year],
+            step=1,
+            marks=[
+                {"value": min_year+(0.25*range_year), "label": "25%"},
+                {"value": min_year+(0.5*range_year), "label": "50%"},
+                {"value": min_year+(0.75*range_year), "label": "75%"},
+            ],
+            mb=50,
+            minRange=1,
+        ),
+        dmc.Text(id='range-slider-output'),
+    )
 #----- DASH APPLICATION STRUCTURE-----------------------------------------------
 app = Dash()
 app.layout =  dmc.MantineProvider([
     dmc.Space(h=30),
     html.Hr(style=style_horiz_line),
     dmc.Text('Global Labor Attributes', ta='center', style=style_h2),
-    dmc.Text('', ta='center', style=style_h3, id='zip_code'),
-    html.Hr(style=style_horiz_line),
     dmc.Space(h=30),
     dmc.Grid(  
         children = [ 
-            dmc.GridCol(get_dataset_radio_picker(), span=2, offset=1),
-            # PUT RANGE SLIDER HERE, TO THE RIGHT OF THE DATASET PICKER
+            dmc.GridCol(
+                dmc.Text('Select a Dataset', size='xl'), span=5, offset=1),
+            dmc.GridCol(
+                dmc.Text('Adjust min and max year', size='xl'),
+                span=5, offset=0),
         ]
     ),
     dmc.Space(h=30),
-    dmc.Grid(  # put px_line_data on the left, px_line_norm on the right
+    dmc.Grid(  
+        children = [ 
+            dmc.GridCol(get_dataset_radio_picker(), span=5, offset=1),
+            dmc.GridCol(get_range_slider(), span=5, offset=0),
+        ]
+    ),
+     html.Hr(style=style_horiz_line),
+    dmc.Space(h=30),
+    dmc.Grid(  # px_line_data on the left, px_line_norm on the right
         children = [ 
             dmc.GridCol(dcc.Graph(id='px_line_data'), span=5, offset=1),
-            dmc.GridCol(dcc.Graph(id='px_line_norm'), span=5, offset=1),
+            dmc.GridCol(dcc.Graph(id='px_line_norm'), span=5, offset=0),
         ]
     ),
 ])
@@ -198,20 +223,22 @@ app.layout =  dmc.MantineProvider([
 @app.callback(
     Output('px_line_data', 'figure'),
     Output('px_line_norm', 'figure'),
-    # Output('zip_code', 'children'),
-    # Input('zip_code_table', 'cellClicked'),
-    #  Input('zip_code_table', 'cellDoubleClicked'),
-    # Input('dataset_table', 'cellClicked'),
+    Output('range-slider-output', "children"),
     Input('dataset_radio', 'value'),
+    Input('range-slider-input', 'value'), 
 )
-def update(from_radio):
+def update(from_radio, x_range):
     dataset_name = from_radio
-    print(f'{dataset_name = }')
     df_dataset = get_df(dataset_name)
-
-    px_line_data = get_px_line(df_dataset, title=dataset_name, norm=False)
-    px_line_norm = get_px_line(df_dataset, title=dataset_name, norm=True)
-    return px_line_data, px_line_norm
+    px_line_data = get_px_line(
+        df_dataset, x_range, title=dataset_name, norm=False)
+    px_line_norm = get_px_line(
+        df_dataset, x_range, title=dataset_name, norm=True)
+    return (
+        px_line_data,
+        px_line_norm, 
+        f'Selected range is {x_range[0]} to {x_range[1]} inclusive'
+    )
 
 if __name__ == '__main__':
     app.run(debug=True)
