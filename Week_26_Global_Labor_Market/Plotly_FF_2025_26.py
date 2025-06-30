@@ -109,7 +109,7 @@ def get_px_line(df, x_range, title, norm):
         y_title='PERCENT CHANGE'
     else:
         title = title + ' -- RAW DATA'
-        y_title='Raw Data Values'
+        y_title='RAW DATA'
     fig=px.line(
         df,
         'YEAR',
@@ -231,13 +231,13 @@ def update(from_radio, x_range):
     dataset_name = from_radio
     df_dataset = get_df(dataset_name)
     px_line_data = get_px_line(
-        df_dataset, x_range, title=dataset_name, norm=False)
+        df_dataset, x_range, title=dataset_name.upper(), norm=False)
     px_line_norm = get_px_line(
-        df_dataset, x_range, title=dataset_name, norm=True)
+        df_dataset, x_range, title=dataset_name.upper(), norm=True)
     return (
         px_line_data,
         px_line_norm, 
-        f'Selected range is {x_range[0]} to {x_range[1]} inclusive'
+        f'{x_range[0]} to {x_range[1]} inclusive'
     )
 
 if __name__ == '__main__':
