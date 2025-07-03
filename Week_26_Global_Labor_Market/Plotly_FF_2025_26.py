@@ -131,28 +131,14 @@ def get_px_line(df, title):
                 font=dict(family='Arial', size=legend_font_size, color='black'),
             )
         ),
-        xaxis_title='',  # normally for showing units, but YEAR is obvious
+        xaxis_title='',  # x-axis YEAR not needed, it is obvious
         yaxis_title=y_title, 
         hovermode="x unified",
     )
     return fig
 
-def get_ag_grid(id):
-    return(
-        dag.AgGrid(
-        rowData=[],
-        columnDefs=[
-            {
-                "field": i, 
-                'filter': True,
-                'sortable': True
-            } for i in []],
-        dashGridOptions={"pagination": True},
-        id=id
-        )
-    )
-
 def get_df_raw(dataset_name, x_year_range):
+    '''returns requested data set, with years filtered by range slider'''
     if dataset_name == 'Management Gender Parity':
         df = df_gender_parity_mgmt
     elif dataset_name == 'Gender Pay Gap':
@@ -171,6 +157,7 @@ def get_df_raw(dataset_name, x_year_range):
         )
 
 def get_df_norm(df_to_norm):
+    ''' returns dataframe with values normalized'''
     for col in df_to_norm.columns[1:]:  # skips first column, which is the year
         df_to_norm = (
             df_to_norm
@@ -181,6 +168,7 @@ def get_df_norm(df_to_norm):
     return df_to_norm
     
 def get_dataset_radio_picker():
+    ''' radio picker selects desired dataset'''
     return(
     dmc.RadioGroup(
         children=dmc.Group(
@@ -192,6 +180,7 @@ def get_dataset_radio_picker():
     )
 
 def get_range_slider():
+    '''used for setting min and max years to evaluate'''
     range_year = max_year - min_year
     return(
         dmc.RangeSlider(
@@ -212,6 +201,7 @@ def get_range_slider():
     )
 
 def join_by_year(df1, df2):
+    ''' merges raw and normalized datasets for display in dash ag table'''
     df_all = (
         df1.join(
         df2,
@@ -225,13 +215,18 @@ def join_by_year(df1, df2):
     df_all = (
         df_all
         .select(df_all_sorted_cols)
-        .with_columns(pl.col(float_cols).round(1))
     )
     return(df_all)
 
 def get_ag_col_defs(columns):
-    ag_col_defs = [{'field':'YEAR', 'pinned':'left', 'width': 100, 'suppressSizeToFit': True}]  # integer, pin left
-    for col in columns[1:]:              # all other cols are floats
+    ''' return setting for ag columns, with numeric formatting '''
+    ag_col_defs = [{   # applies to YEAR column, integer
+        'field':'YEAR', 
+        'pinned':'left', # pin the YEAR column to keep visible while scrolling
+        'width': 100, 
+        'suppressSizeToFit': True
+    }]
+    for col in columns[1:]:   # applies to data columns, floating point
         ag_col_defs.append({
             'headerName': col,
             'field': col,
