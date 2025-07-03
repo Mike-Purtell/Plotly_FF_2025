@@ -2,6 +2,7 @@ import plotly.express as px
 import polars as pl
 import polars.selectors as cs
 import dash
+import dash_ag_grid as dag
 from dash import Dash, dcc, html, Input, Output
 import dash_mantine_components as dmc
 dash._dash_renderer._set_react_version('18.2.0')
@@ -10,31 +11,35 @@ dash._dash_renderer._set_react_version('18.2.0')
 df_gender_parity_mgmt = (
     pl.scan_csv('gender-parity-in-managerial-positions.csv')
     .select(
-       YEAR = pl.col('Year'),
+       YEAR = pl.col('Year').cast(pl.UInt16),
        FEM_SHR_MGMT = pl.col('Female share in management'),
        FEB_SHR_EMP = pl.col('Female share in employment'),
        FEM_SHR_WRKN_POP = pl.col('Female share in the working-age population'),
     )
+    .with_columns(pl.col(pl.Float64).cast(pl.Float32))
     .sort('YEAR')
     .collect()
 )
+
 df_gender_pay_gap = (
     pl.scan_csv('gender-pay-gap.csv')
     .select(
-       YEAR = pl.col('Year'),
+       YEAR = pl.col('Year').cast(pl.UInt16),
        WORLD = pl.col('World'),
        LOW_INCOME = pl.col('Low income'),
        LOWER_MID = pl.col('Lower-middle income'),
        UPPER_MID = pl.col('Upper-middle income'),
        HIGH_INCOME = pl.col('High income'),
     )
+    .with_columns(pl.col(pl.Float64).cast(pl.Float32))
+    .sort('YEAR')
     .collect()
 )
 
 df_labor_productivity = (
     pl.scan_csv('labor-productivity.csv')
     .select(
-       YEAR = pl.col('Year'),
+       YEAR = pl.col('Year').cast(pl.UInt16),
        WORLD = pl.col('World'),
        AFRICA = pl.col('Africa'),
        AMERICAS = pl.col('Americas'),
@@ -42,13 +47,15 @@ df_labor_productivity = (
        ASIA_PACIFIC = pl.col('Asia and the Pacific'),
        EUR_CENT_ASIA = pl.col('Europe and Central Asia'),
     )
+    .with_columns(pl.col(pl.Float64).cast(pl.Float32))
+    .sort('YEAR')
     .collect()
 )
 
 df_unemployment = (
     pl.scan_csv('unemployment.csv')
     .select(
-       YEAR = pl.col('Year'),
+       YEAR = pl.col('Year').cast(pl.UInt16),
        WORLD = pl.col('World'),
        AFRICA = pl.col('Africa'),
        AMERICAS = pl.col('Americas'),
@@ -56,6 +63,7 @@ df_unemployment = (
        ASIA_PACIFIC = pl.col('Asia and the Pacific'),
        EUR_CENT_ASIA = pl.col('Europe and Central Asia'),
     )
+    .with_columns(pl.col(pl.Float64).cast(pl.Float32))
     .collect()
 )
 
@@ -89,26 +97,11 @@ dataset_names = [
 ]
 
 #----- FUNCTIONS----------------------------------------------------------------
-def get_px_line(df, x_range, title, norm):
-    df = (
-        df
-        .select(first:=cs.by_name('YEAR'), ~first)
-        .filter(pl.col('YEAR') >= x_range[0])
-        .filter(pl.col('YEAR') <= x_range[1])
-    )
+def get_px_line(df, title):
     df_cols = df.columns
-    if norm:  # normalize the data, relative to the dataset's first year
-        title = title + ' -- NORMALIZED'
-        for col in df_cols[1:]:  # skips first column, which is the year
-            df = (
-                df
-                .with_columns(
-                    ((100*pl.col(col)/pl.col(col).first()-100)).alias(col)
-                )
-            )
+    if title.endswith('NORMALIZED'):
         y_title='PERCENT CHANGE'
     else:
-        title = title + ' -- RAW DATA'
         y_title='RAW DATA'
     fig=px.line(
         df,
@@ -144,19 +137,49 @@ def get_px_line(df, x_range, title, norm):
     )
     return fig
 
-def get_df(dataset_name):
+def get_ag_grid(id):
+    return(
+        dag.AgGrid(
+        rowData=[],
+        columnDefs=[
+            {
+                "field": i, 
+                'filter': True,
+                'sortable': True
+            } for i in []],
+        dashGridOptions={"pagination": True},
+        id=id
+        )
+    )
+
+def get_df_raw(dataset_name, x_year_range):
     if dataset_name == 'Management Gender Parity':
-        return(df_gender_parity_mgmt)
+        df = df_gender_parity_mgmt
     elif dataset_name == 'Gender Pay Gap':
-        return(df_gender_pay_gap)
+        df = df_gender_pay_gap
     elif dataset_name == 'Labor Productivity':
-        return(df_labor_productivity)
+        df = df_labor_productivity
     elif dataset_name == 'Unemployment':
-        return(df_unemployment)
+        df =df_unemployment
     else:
         print(f'NO VALID SELECION FOR {dataset_name}')
-        return
+    return (
+        df
+        .select(first:=cs.by_name('YEAR'), ~first)
+        .filter(pl.col('YEAR') >= x_year_range[0])
+        .filter(pl.col('YEAR') <= x_year_range[1])
+        )
 
+def get_df_norm(df_to_norm):
+    for col in df_to_norm.columns[1:]:  # skips first column, which is the year
+        df_to_norm = (
+            df_to_norm
+            .with_columns(
+                ((100*pl.col(col)/pl.col(col).first()-100)).alias(col)
+            )
+        )
+    return df_to_norm
+    
 def get_dataset_radio_picker():
     return(
     dmc.RadioGroup(
@@ -187,6 +210,37 @@ def get_range_slider():
         ),
         dmc.Text(id='range-slider-output'),
     )
+
+def join_by_year(df1, df2):
+    df_all = (
+        df1.join(
+        df2,
+        on='YEAR',
+        how='left',
+        suffix='_NORM'
+        )
+    )
+    float_cols = [c for c in sorted(df_all.columns[1:])]
+    df_all_sorted_cols = (['YEAR'] + float_cols)
+    df_all = (
+        df_all
+        .select(df_all_sorted_cols)
+        .with_columns(pl.col(float_cols).round(1))
+    )
+    return(df_all)
+
+def get_ag_col_defs(columns):
+    ag_col_defs = [{'field':'YEAR', 'pinned':'left', 'width': 100, 'suppressSizeToFit': True}]  # integer, pin left
+    for col in columns[1:]:              # all other cols are floats
+        ag_col_defs.append({
+            'headerName': col,
+            'field': col,
+            'type': "numericColumn",
+            'valueFormatter': {"function": "d3.format('.2f')(params.value)"},
+            'columnSize':'sizeToFit'
+        })
+    return ag_col_defs
+
 #----- DASH APPLICATION STRUCTURE-----------------------------------------------
 app = Dash()
 app.layout =  dmc.MantineProvider([
@@ -218,26 +272,50 @@ app.layout =  dmc.MantineProvider([
             dmc.GridCol(dcc.Graph(id='px_line_norm'), span=5, offset=0),
         ]
     ),
+    dmc.Space(h=30),
+    dmc.Grid(
+        children = [
+            dmc.GridCol(
+                dag.AgGrid(
+                    id='ag_grid'
+                ),
+                span=10, offset=1
+            ),
+        ]
+    ),
 ])
 
 @app.callback(
     Output('px_line_data', 'figure'),
     Output('px_line_norm', 'figure'),
-    Output('range-slider-output', "children"),
+    Output('range-slider-output', 'children'),
+    Output('ag_grid', 'columnDefs'),  # columns vary by dataset
+    Output('ag_grid', 'rowData'),   
     Input('dataset_radio', 'value'),
     Input('range-slider-input', 'value'), 
 )
-def update(from_radio, x_range):
+def update(from_radio, x_year_range):
     dataset_name = from_radio
-    df_dataset = get_df(dataset_name)
+    slider_label = f'{x_year_range[0]} to {x_year_range[1]} inclusive'
+
+    df_raw = get_df_raw(dataset_name, x_year_range)
     px_line_data = get_px_line(
-        df_dataset, x_range, title=dataset_name.upper(), norm=False)
+        df_raw, title=dataset_name.upper() + ' -- RAW DATA')
+    
+    df_norm = get_df_norm(df_raw)
     px_line_norm = get_px_line(
-        df_dataset, x_range, title=dataset_name.upper(), norm=True)
+        df_norm, title=dataset_name.upper() + ' -- NORMALIZED')
+    
+    df_all = join_by_year(df_raw, df_norm)
+    ag_col_defs = get_ag_col_defs(df_all.columns)    
+    ag_row_data = df_all.to_dicts()
+
     return (
         px_line_data,
         px_line_norm, 
-        f'{x_range[0]} to {x_range[1]} inclusive'
+        slider_label,
+        ag_col_defs,
+        ag_row_data,
     )
 
 if __name__ == '__main__':
