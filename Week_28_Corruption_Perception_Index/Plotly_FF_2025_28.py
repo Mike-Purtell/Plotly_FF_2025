@@ -7,8 +7,7 @@ from dash import Dash, dcc, html, Input, Output
 import dash_mantine_components as dmc
 dash._dash_renderer._set_react_version('18.2.0')
 
-# cf_region maps regional abbreviations to their full regional names
-# added full regional names with a left join
+# map region abbreviations to full names, add to datasets with left join
 df_region = (
     pl.DataFrame({
         'REGION_ABBR' : ['AME', 'AP', 'ECA', 'MENA', 'SSA','WE/EU'],
@@ -22,14 +21,20 @@ df_region = (
 
 df_cpi = (
     pl.scan_csv('CPI2024.csv')
-    .select(
-        COUNTRY = pl.col('Country / Territory').str.to_uppercase(),
+    .select(          
+        COUNTRY = (
+            pl.col('Country / Territory')
+            # fix naming inconsistency for both Koreas
+            .replace('Korea, North', 'north korea')
+            .replace('Korea, South', 'south korea')
+            .str.to_uppercase()
+        ),
         ISO3 = pl.col('ISO3'), # no mods to ISO3 column
         REGION_ABBR = pl.col('Region'),
         RANK_2024= pl.col('Rank'),
     )
-    .collect()
-    .join(
+    .collect()  # convert to polars dataframe - lazy frames can't join
+    .join(      # add region full names to this dataset
         df_region,
         on='REGION_ABBR'
     )
@@ -49,8 +54,10 @@ df_historical = (
         REGION_ABBR = pl.col('Region'),
         RANK= pl.col('Rank'),
     )
-    .collect()
-    .join(
+    # exclude countries not present in both datasets
+    .filter(~pl.col('COUNTRY').is_in(['Brunei Darussalam', 'Puerto Rico']))
+    .collect() # convert to polars dataframe - lazy frames can't join
+    .join(     # add region full names to this dataset
         df_region,
         on='REGION_ABBR'
     )
@@ -76,7 +83,6 @@ region_list = sorted(
     ['REGION']
     .to_list()
 )
-
 country_list = sorted(
     df_historical.unique('COUNTRY')
     .select(pl.col('COUNTRY'))
@@ -85,7 +91,6 @@ country_list = sorted(
 )
 
 #----- FUNCTIONS ---------------------------------------------------------------
-
 def get_choropleth():
     choropleth = px.choropleth(
         df_cpi.sort('RANK_2024'), 
@@ -117,49 +122,16 @@ def get_choropleth():
         )
     )
     choropleth.layout.coloraxis.colorbar.title = 'RANK'
-
     choropleth.update_traces(
         hovertemplate =
-            '<b>%{customdata[0]} (%{customdata[1]})</b><br>' + # Region name,abbr
+            '<b>%{customdata[0]} (%{customdata[1]})</b><br>' + # Reg name,abbr
             '%{customdata[2]}<br>' + 
             'Worldwide Rank: %{customdata[3]}' + 
             '<extra></extra>',
     )
     return choropleth
 
-#----- DASH COMPONENTS ---------------------------------------------------------
-grid = dag.AgGrid(
-    rowData=[],
-    columnDefs=[{
-        "field": i,
-        'filter': True, 
-        'sortable': True
-        } for i in df_historical.columns
-    ],
-    dashGridOptions={"pagination": True},
-    columnSize="sizeToFit",
-    id='ag-grid'
-)
-dmc_select_region = dmc.RadioGroup(
-    children= dmc.Group([dmc.Radio(i, value=i) for i in region_list], my=10),
-    value=region_list[0],
-    label= 'Select a Region',
-    size='sm',
-    mt=10,
-    id='select-region'
-)
-
-dmc_select_country = dmc.Select(
-    label='Select a country',
-    data=country_list,
-    value='',
-    checkIconPosition='left',
-    size='sm',
-    # mt=10,
-    id='select-country',
-)
-
-def get_px_line(region, focus_country):
+def get_scatter(region, focus_country):
     country_list = (
         df_historical
         .filter(pl.col('REGION') == region)
@@ -180,14 +152,14 @@ def get_px_line(region, focus_country):
     fig = go.Figure()
     for i, country in enumerate(country_list, start=1):
         scatter_mode='lines'
-        trace_color ='#D3D3D3'
+        trace_color ='#D3D3D3'  # lightgray
         line_width=1
         z=0  # for z order for unfocused countries
         if focus_country == country:
-            trace_color='#0000FF'
-            line_width=2
+            trace_color='#0000FF'      #  blue
+            line_width=2                 # thicker line
             scatter_mode='lines+markers'
-            z=1
+            z=1                    # for zorder, to place focus_country on top
         x = df_plot['YEAR']
         y = df_plot[country]
         hover_text = [
@@ -211,13 +183,47 @@ def get_px_line(region, focus_country):
     fig.update_layout(
         title=(
             f'REGION: {region}<br>' +
-            f'<sup>Worldwide Rank <span style="color: blue"> <b>{focus_country}</b></span></sup>'
+            '<sup>Worldwide Rank for <span style="color: blue">' +
+            f'<b>{focus_country}</b></span></sup>'
         ),
         yaxis_title='Worldwide Rank',
         xaxis_title='YEAR (20XX)',
         template='simple_white'
     )
     return fig
+
+
+#----- DASH COMPONENTS ---------------------------------------------------------
+grid = dag.AgGrid(
+    rowData=[],
+    columnDefs=[{
+        "field": i,
+        'filter': True, 
+        'sortable': True
+        } for i in df_historical.columns
+    ],
+    dashGridOptions={"pagination": True},
+    columnSize="sizeToFit",
+    id='ag-grid'
+)
+dmc_select_region = dmc.RadioGroup(
+    children= dmc.Group([dmc.Radio(i, value=i) for i in region_list], my=10),
+    value=region_list[0],
+    label= 'Select a Region',
+    size='sm',
+    id='select-region'
+)
+
+dmc_select_country = dmc.Select(
+    label='Select a country',
+    data=country_list,
+    value='',
+    checkIconPosition='left',
+    size='sm',
+    id='select-country',
+)
+
+
 
 #----- DASH APPLICATION STRUCTURE-----------------------------------------------
 app = Dash()
@@ -238,8 +244,13 @@ app.layout =  dmc.MantineProvider([
     dmc.Space(h=20),
     dmc.Grid(
         children = [ 
-            dmc.GridCol(dcc.Graph(figure=get_choropleth()),id='choropleth', span=6, offset=1),
-            dmc.GridCol(dcc.Graph(id='px_line'),span=5, offset=0),
+            dmc.GridCol(
+                dcc.Graph(figure=get_choropleth()),
+                id='choropleth', 
+                span=6, 
+                offset=1
+            ),
+            dmc.GridCol(dcc.Graph(id='scatter'),span=5, offset=0),
         ]
     ),
     dmc.Grid(
@@ -271,7 +282,7 @@ def update_country_list(region):
 
 @app.callback(
     Output('ag-grid', 'rowData'), 
-    Output('px_line', 'figure'),  
+    Output('scatter', 'figure'),  
     Input('select-region', 'value'),
     Input('select-country', 'value'),
 )
@@ -282,10 +293,9 @@ def update_dashboard(region, country):
         .sort('YEAR')
     )
     row_data = df_ag_grid.to_dicts()
-
-    px_line = get_px_line(region, country)
+    go_scatter = get_scatter(region, country)
     return (
-        row_data, px_line
+        row_data, go_scatter
     )
 
 #----- RUN THE APP -------------------------------------------------------------
