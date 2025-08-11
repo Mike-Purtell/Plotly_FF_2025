@@ -1,0 +1,341 @@
+import polars as pl
+import polars.selectors as cs
+import plotly.express as px
+import dash_ag_grid as dag
+import dash
+from dash import Dash, dcc, html, Input, Output
+import dash_mantine_components as dmc
+import dash_bootstrap_components as dbc
+dash._dash_renderer._set_react_version('18.2.0')
+
+#----- GLOBALS -----------------------------------------------------------------
+style_horizontal_thick_line = {'border': 'none', 'height': '4px', 
+    'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
+    'margin': '10px,', 'fontsize': 32}
+
+style_horizontal_thin_line = {'border': 'none', 'height': '2px', 
+    'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
+    'margin': '10px,', 'fontsize': 12}
+
+style_h2 = {'text-align': 'center', 'font-size': '40px', 
+            'fontFamily': 'Arial','font-weight': 'bold'}
+style_h3 = {'text-align': 'center', 'font-size': '24px', 
+            'fontFamily': 'Arial','font-weight': 'normal'}
+
+dict_attr_desc = {
+    'CHOCOLATE'	     : 'Does it contain chocolate?',
+    'FRUITY'         : 'Is it fruit flavored?',
+    'CARAMEL'        : 'Is there caramel in the candy?',
+    'PEANUT_ALMOND'  : 'Does it contain peanuts, peanut butter or almonds?',
+    'NOUGAT'         : 'Does it contain nougat?',
+    'CRISP_RICE_WAF' : 
+        'Does it contain crisped rice, wafers, or a cookie component?',      
+    'HARD'           :	'Is it a hard candy?',
+    'BAR'            :	'Is it a candy bar?',
+    'PLURIBUS'       :	'Is it one of many candies in a bag or box?'
+}
+dict_outcome_desc = {
+    'SUGAR_PCT': 'The percentile of sugar it falls under within the data set.',
+    'PRICE_PCT': 'The unit price percentile compared to the rest of the set.',
+    'WIN_PCT'  : 'The overall win percentage according to 269,000 matchups.',
+}
+color1='rgba(0, 123, 255, 0.6)'  # blue
+color2='rgba(255, 159, 64, 0.6)' # orange
+
+#----- GATHER AND CLEAN DATA ---------------------------------------------------
+df = (
+    pl.read_csv('candy-data.csv')
+    .rename(lambda c: c.upper()) # all column names to upper case
+    .rename({                    # renames to reduce size of long names
+        'COMPETITORNAME'   : 'CANDY', 
+        'SUGARPERCENT'     : 'SUGAR_PCT',
+        'PRICEPERCENT'     : 'PRICE_PCT',
+        'WINPERCENT'       : 'WIN_PCT',
+        'PEANUTYALMONDY'   : 'PEANUT_ALMOND',
+        'CRISPEDRICEWAFER' : 'CRISP_RICE_WAF',
+    })
+    # Sugar and Price - change Percentage ranges from 1 max to 100 max
+    .with_columns(pl.col('SUGAR_PCT', 'PRICE_PCT')*100.0) 
+    .with_columns(cs.integer().cast(pl.UInt8))  # columns with 0's and 1's only
+    .with_columns(cs.float().cast(pl.Float32))  # percents don't need Float64
+)
+# next 2 lines use polars column selectors to group by type - easy and powerful
+attribute_list = sorted(df.select(cs.integer()).columns)
+outcome_list = sorted(df.select(cs.float()).columns)
+
+#----- DASH COMPONENTS------ ---------------------------------------------------
+dmc_select_attribute = (
+    dmc.Select(
+        label='Select ATTRIBUTE',
+        placeholder="Select one",
+        id='attribute',
+        data=attribute_list,
+        value=attribute_list[0],
+        size='xl',
+    ),
+)
+
+dmc_select_outcome = (
+    dmc.Select(
+        label='Select OUTCOME',
+        placeholder="Select one",
+        id='outcome',
+        data=outcome_list,
+        value=outcome_list[0],
+        size='xl',
+    ),
+)
+attribute_card = dmc.Card(
+    children=[
+        dmc.Text('attr-title', fz=30, id='attr-title'),
+        dmc.Text('attr-text', fz=20, id='attr-text'),
+    ],
+    withBorder=True,
+    shadow='sm',
+    radius='md'
+)
+
+outcome_card = dmc.Card(
+    children=[
+        dmc.Text('outcome-title', fz=30, id='outcome-title'),
+        dmc.Text('outcome-text', fz=20, id='outcome-text'),
+    ],
+    withBorder=True,
+    shadow='sm',
+    radius='md'
+)
+
+#----- FUNCTIONS ---------------------------------------------------------------
+def get_ag_col_defs(columns):
+    ''' return setting for ag columns, with numeric formatting '''
+    ag_col_defs = [{   # make CANDY column wider, pinned with floating filter
+        'field':'CANDY', 
+        'pinned':'left',
+        'width': 150, 
+        'floatingFilter': True,
+        "filter": "agTextColumnFilter", 
+        "suppressHeaderMenuButton": True
+    }]
+    for col in columns[1:]:   # applies to data columns, floating point
+        ag_col_defs.append({
+            'headerName': col,
+            'field': col,
+            'type': "numericColumn",
+            'valueFormatter': {"function": "d3.format('.1f')(params.value)"},
+            'width' : 100,
+            'floatingFilter': False,
+            'suppressHeaderMenuButton' : True,
+        })
+    return ag_col_defs
+ 
+def get_median(df, attribute, filter, outcome):
+    ''' return median value for specific attribute, outcome '''
+    return df.filter(pl.col(attribute) == filter)[outcome].median()
+
+def get_subtitle(outcome, direction, pct_color, median_shift):
+    ''' return complex subtitle with f-strings and html color'''
+    return (
+        f'<sup>{outcome} median {direction} by ' +
+        f'<b><span style="color:{pct_color}">' +
+        f'{abs(median_shift):.1f}%</span></b>'
+    )
+
+def get_box_plot(attribute, outcome):
+    ''' returns plotly graph objects box_plot, created with px.box API '''
+    
+    df_box = ( # make data frame for this attribute, outcome
+        df
+        .select(attribute, outcome)
+        .with_columns(
+            pl.col(attribute)
+            .cast(pl.String())
+            .replace('0', f'NO {attribute}')
+            .replace('1', f'HAS {attribute}')
+        )
+        .with_columns(MEDIAN = pl.col(outcome).median().over(attribute))
+        .sort(attribute, descending=True)
+    )
+    no_median = get_median(df_box, attribute, f'NO {attribute}',  outcome)
+    has_median = get_median(df_box,attribute, f'HAS {attribute}', outcome)
+    median_shift = has_median - no_median
+    direction='decreased'
+    pct_color = 'red'
+    if median_shift > 0.0:
+        direction='increased'
+        pct_color = 'green'
+
+    fig = px.box(
+        df_box,
+        x=attribute,
+        y=outcome,
+        template='plotly_white',
+        title=(
+            f'<b>EFFECT OF {attribute} ON {outcome}</b><br>' +
+            get_subtitle(outcome, direction, pct_color, median_shift)
+        ),
+        color=attribute,
+        color_discrete_map = {
+            f'NO {attribute}' : color1,
+            f'HAS {attribute}' : color2,
+        },
+        points='all', # shows datapoints next to each box_plot item
+    )   
+    fig.update_xaxes(
+        categoryorder='array', 
+        categoryarray= [f'NO {attribute}', f'HAS {attribute}']
+    )
+    fig.update_layout(
+        yaxis_range=[0,100],
+        title_font=dict(size=24),
+    )
+    return fig
+
+def get_histogram(attribute, outcome):
+    ''' returns plotly graph objects histogram, created with px.box API '''
+    
+    df_hist = (  # make data frame for this attribute, outcome
+        df
+        .select(attribute, outcome)
+        .with_columns(
+            pl.col(attribute)
+            .cast(pl.String())
+            .str.replace('0', f'NO {attribute}')
+            .str.replace('1', f'HAS {attribute}')
+        )
+        .sort(attribute, descending=True)
+    )
+    no_median = get_median(df_hist, attribute, f'NO {attribute}',  outcome)
+    has_median = get_median(df_hist,attribute, f'HAS {attribute}', outcome)
+    median_shift = has_median - no_median
+
+    direction='decreased'
+    pct_color = 'red'
+    if median_shift > 0.0:
+        direction='increased'
+        pct_color = 'green'
+    fig = px.histogram(
+        df_hist, 
+        x=outcome, 
+        color=attribute,
+        color_discrete_map = {
+            f'NO {attribute}' : color1,
+            f'HAS {attribute}' : color2,
+        },
+        template='plotly_white',
+        title=(
+            f'<b>EFFECT OF {attribute} ON {outcome}</b><br>' +
+            get_subtitle(outcome, direction, pct_color, median_shift)
+        ),
+    )
+    # Update layout for overlay and transparency
+    fig.update_layout(
+        barmode='overlay',
+        xaxis_title=outcome,
+        yaxis_title=attribute,
+        title_font=dict(size=24),
+    )
+    fig.update_traces(
+        marker_line_color='black',
+        marker_line_width=1.5
+    )
+    return fig
+
+#----- DASH APPLICATION STRUCTURE-----------------------------------------------
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+server = app.server
+app.title = "Candy"
+
+app.layout =  dmc.MantineProvider([
+    dmc.Space(h=30),
+    html.Hr(style=style_horizontal_thick_line),
+    dmc.Text('Candy Attributes and Outcomes', ta='center', style=style_h2),
+    dmc.Text('', ta='center', style=style_h3, id='zip_code'),
+    html.Hr(style=style_horizontal_thick_line),
+    dmc.Space(h=30),
+    dmc.Grid(children = [
+        dmc.GridCol(dmc.Text('Dashboard Control Panel', 
+            fw=500, # semi-bold
+            style={'fontSize': 28},
+            ),
+            span=3, offset=1
+        )]
+    ),
+    dmc.Space(h=30),
+    dmc.Grid(children = [
+        dmc.GridCol(dmc_select_attribute, span=2, offset = 1),
+        dmc.GridCol(attribute_card,span=2, offset=0),
+        dmc.GridCol(dmc_select_outcome, span=2, offset = 1),
+        dmc.GridCol(outcome_card,span=2, offset=0),
+    ]),  
+    dmc.Space(h=75),
+    html.Hr(style=style_horizontal_thin_line),
+    dmc.Space(h=75),
+        dmc.Grid(children = [
+        dmc.GridCol(dmc.Text(
+            'Dashboard Output Panel', 
+            fw=500, # semi-bold
+            style={'fontSize': 28},
+            ),
+            span=3, offset=1
+        )]
+    ),
+
+    dmc.Grid(children = [
+        dmc.GridCol(
+            dmc.Text(
+                'Data for each value of {attribute}, {outcome}', 
+                ta='left', 
+                style=style_h3,
+                id='table-desc'
+            ),
+            span=3, offset=8
+        )]
+    ),
+    dmc.Grid(  
+        children = [
+            dmc.GridCol(dcc.Graph(id='boxplot'), span=4, offset=0),
+            dmc.GridCol(dcc.Graph(id='histogram'), span=4, offset=0), 
+            dmc.GridCol(dag.AgGrid(id='ag-grid'),span=3, offset=0),           
+        ]
+    ),
+])
+
+@app.callback(
+    Output('boxplot', 'figure'),
+    Output('histogram', 'figure'),
+    Output('ag-grid', 'columnDefs'),  # columns vary by dataset
+    Output('ag-grid', 'rowData'),
+    Output('attr-title', 'children'),   
+    Output('attr-text', 'children'),
+    Output('outcome-title', 'children'),   
+    Output('outcome-text', 'children'),
+    Output('table-desc', 'children'),
+    Input('attribute', 'value'),
+    Input('outcome', 'value'),
+)
+def update(attribute, outcome):
+    box_plot = get_box_plot(attribute, outcome)
+    histogram = get_histogram(attribute, outcome)
+    df_table = (
+        df
+        .select('CANDY', attribute, outcome)
+        .sort(outcome,descending=True)
+    )
+    ag_col_defs = get_ag_col_defs(df_table.columns)    
+    ag_row_data = df_table.to_dicts()
+    table_desc = f'{attribute} and {outcome} data, all candies'
+    return (
+        box_plot, 
+        histogram,  
+        ag_col_defs, 
+        ag_row_data,
+        attribute,
+        dict_attr_desc[attribute],
+        outcome,
+        dict_outcome_desc[outcome],
+        table_desc
+    )
+
+if __name__ == '__main__':
+    # app.run(debug=True)
+    app.run_server(debug=True)
