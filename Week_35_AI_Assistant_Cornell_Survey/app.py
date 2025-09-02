@@ -8,6 +8,9 @@ from dash import Dash, dcc, html, Input, Output
 import dash_mantine_components as dmc
 dash._dash_renderer._set_react_version('18.2.0')
 
+# TODO: Fix pareto to only show top 10
+# TODO: unify dashboard theme with visualizations
+# TODO: add barbell plot, male vs. famale for all outputs (AI_ASST, CS_LANG, AI_FEATURES)
 #----- GLOBALS -----------------------------------------------------------------
 style_horizontal_thick_line = {'border': 'none', 'height': '4px', 
     'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
@@ -51,8 +54,6 @@ def read_and_clean_csv():
             AGE_RANGE = cs.starts_with('[3]')
                 .replace('60 or older', '60+')
                 .cast(pl.Categorical()),
-            WORK_LANG = pl.concat_list(cs.starts_with('[9]'))
-                .list.eval(pl.element().filter(pl.element().is_not_null())),
             EDUCATION = cs.starts_with('[12]')
                 .replace(no_education, 'None')
                 .replace(elem_education, 'Elementary')
@@ -63,65 +64,144 @@ def read_and_clean_csv():
                 .replace(doctorate, 'Doctorate')
             .replace(professional, 'Professional')
             .cast(pl.Categorical()),
-            JOB_ROLE = pl.concat_list(cs.starts_with('[23]'))
-                .list.eval(pl.element().filter(pl.element().is_not_null())),
             JOB_LEVEL = cs.starts_with('[24]').cast(pl.Categorical()),
             YEARS_EXPERIENCE = cs.starts_with('[25]')
                 .str.replace(' years', '')
                 .str.replace(' year', '')
                 .str.replace('Less than 1', '<1')
                 .str.replace("I don't have any professional coding experience", '0'),
-            CS_LANGS = pl.concat_list(cs.starts_with('[44]'))
+            CS_LANG = pl.concat_list(cs.starts_with('[44]'))
                 .list.eval(pl.element().filter(pl.element().is_not_null())),
             AI_ASST = pl.concat_list(cs.starts_with('[62]'))
                 .list.eval(pl.element().filter(pl.element().is_not_null())),
-            AI_FEATURES = pl.concat_list(cs.starts_with('[63]'))
+            AI_FEATURE = pl.concat_list(cs.starts_with('[63]'))
                 .list.eval(pl.element().filter(pl.element().is_not_null())),
         )
         .with_columns(
-            JOB_ROLE_COUNT = pl.col('JOB_ROLE').list.len(),
-            WORK_LANG_COUNT = pl.col('WORK_LANG').list.len(),
-            CS_LANGS_COUNT = pl.col('CS_LANGS').list.len(),
+            CS_LANG_COUNT = pl.col('CS_LANG').list.len(),
             AI_ASST_COUNT = pl.col('AI_ASST').list.len(),
-            AI_FEATURES_COUNT = pl.col('AI_FEATURES').list.len(),
+            AI_FEATURE_COUNT = pl.col('AI_FEATURE').list.len(),
         )
         .with_columns(
-            JOB_ROLE_WT = pl.when(pl.col('JOB_ROLE_COUNT') > 0)
-                .then(1/pl.col('JOB_ROLE_COUNT')).otherwise(pl.lit(0)),        
-            WORK_LANG_WT = pl.when(pl.col('WORK_LANG_COUNT') > 0)
-                .then(1/pl.col('WORK_LANG_COUNT')).otherwise(pl.lit(0)),
-            CS_LANGS_WT = pl.when(pl.col('CS_LANGS_COUNT') > 0)
-                .then(1/pl.col('CS_LANGS_COUNT')).otherwise(pl.lit(0)),
+            CS_LANG_WT = pl.when(pl.col('CS_LANG_COUNT') > 0)
+                .then(1/pl.col('CS_LANG_COUNT')).otherwise(pl.lit(0)),
             AI_ASST_WT = pl.when(pl.col('AI_ASST_COUNT') > 0)
                 .then(1/pl.col('AI_ASST_COUNT')).otherwise(pl.lit(0)),
-            AI_FEATURES_WT = pl.when(pl.col('AI_FEATURES_COUNT') > 0)
-                .then(1/pl.col('AI_FEATURES_COUNT')).otherwise(pl.lit(0)),
+            AI_FEATURE_WT = pl.when(pl.col('AI_FEATURE_COUNT') > 0)
+                .then(1/pl.col('AI_FEATURE_COUNT')).otherwise(pl.lit(0)),
         )
         .drop_nulls('GENDER')
         .filter(pl.col('EDUCATION') != 'Other')
         .select(
-            'COUNTRY', 'GENDER', 'AGE_RANGE', 
-            'EDUCATION',  'JOB_LEVEL', 'YEARS_EXPERIENCE', 
-            'JOB_ROLE',     'JOB_ROLE_COUNT',     'JOB_ROLE_WT',       
-            'WORK_LANG',    'WORK_LANG_COUNT',     'WORK_LANG_WT',
-            'CS_LANGS',     'CS_LANGS_COUNT',      'CS_LANGS_WT',
-            'AI_ASST',      'AI_ASST_COUNT',       'AI_ASST_WT',
-            'AI_FEATURES',  'AI_FEATURES_COUNT',   'AI_FEATURES_WT',
+            'COUNTRY',      'GENDER',             'AGE_RANGE', 
+            'EDUCATION',    'JOB_LEVEL',          'YEARS_EXPERIENCE', 
+            'CS_LANG' ,     'CS_LANG_COUNT',      'CS_LANG_WT',
+            'AI_ASST',      'AI_ASST_COUNT',      'AI_ASST_WT',
+            'AI_FEATURE',   'AI_FEATURE_COUNT',   'AI_FEATURE_WT',
         )
         .with_columns(cs.float().cast(pl.Float32))
         .with_columns(cs.integer().cast(pl.UInt8))
         .with_row_index(name='INDEX', offset=1)
         .with_columns(pl.col('INDEX').cast(pl.UInt16))
-        .explode('JOB_ROLE')
-        .explode('WORK_LANG')
-        .explode('CS_LANGS') 
+        .explode('CS_LANG') 
         .explode('AI_ASST')
-        .explode('AI_FEATURES')
+        .explode('AI_FEATURE')
+        .with_columns(   # shorten the long name items
+            pl.col('CS_LANG')
+            .replace('Clojure / ClojureScript','Clojure')
+            .replace("I don't use programming languages",'None Used')
+            .replace('Platform-tied language (Apex, ABAP, 1C)','Plaform Based')
+            .replace(
+                'SQL (PL / SQL, T-SQL, and other programming extensions of SQL)',
+                'SQL'
+            )
+            .replace(
+                'Shell scripting languages (Bash / Shell / PowerShell)',
+                'Shell Scripts'
+            )
+        )
+        .with_columns(   # shorten the long name items
+            pl.col('AI_ASST')
+            .replace('Dream Studio (Stable Diffusion)','Dream Studio')
+            .replace('JetBrains AI Assistant','Jetbrains')
+            .replace('Visual Studio IntelliCode','Visual Studio')
+        )
+        .with_columns(   # shorten the long name items
+            pl.col('AI_FEATURE')
+            .replace(
+                'Assistive technologies (for example, AI-powered text-to-speech and speech-to-text tools)',
+                'Assistive tech'
+            )
+            .replace(
+                'Asking general questions about software development in natural languages',
+                'Natural Lang Questions'
+            )
+            .replace(
+                'Data analytics for educational insights',
+                'Data analytics'
+            )
+            .replace(
+                'Educational content recommendations',
+                'Educational content'
+            )
+            .replace(
+                'Explaining exceptions and errors and offering fixes for them',
+                'Exceptions, errors'
+            )
+            .replace(
+                'Generating CLI commands by natural language description',
+                'CLI commands'
+            )
+            .replace(
+                'Generating code comments, documentation or commit messages',
+                'Comments, commits'
+            )
+            .replace(
+                'Help in choosing framework-related settings and methods',
+                'Framework, settings'
+            )
+            .replace(
+                'Performing code reviews',
+                'Code review'
+            )
+            .replace(
+                "I don’t use AI-based assistants",
+                "Don't use"
+            )
+            .replace(
+                'Language translation and pronunciation',
+                'Foreign Language'
+            )
+            .replace(
+                'Natural Lang Questions',
+                'Natural Language'
+            )
+            .replace(
+                'Refactoring code',
+                'Refactoring'
+            )
+            .replace(
+                'Search in natural language queries for code fragments',
+                'Code fragments'
+            )            
+            .replace(
+                'Study planning and time management',
+                'Planning, time mgmt'
+            )
+            .replace(
+                'Summarizing recent code changes to understand what happened more quickly',
+                'Code change summary'
+            )
+            .replace(
+                'Interactive simulations',
+                'Interactive sims'
+            )
+        )
         .with_columns(cs.string().cast(pl.Categorical()))
         .collect()  # convert Lazy Frame to Data Frame
     )
 
-def get_histo_users(country, group_by):
+def get_histo_users(df_index, country, group_by):
     print(f'{group_by = }')
     print(f'{country = }')
 
@@ -132,9 +212,9 @@ def get_histo_users(country, group_by):
     elif group_by == 'EDUCATION':
         group_by_order = education_order
     if country == 'ALL_COUNTRIES':
-        df_histo = df_global  # no filtering when country is ALL_COUNTRIES 
+        df_histo = df_index  # no filtering when country is ALL_COUNTRIES 
     else:   # only use data from selected country
-        df_histo = df_global.filter(pl.col('COUNTRY') == country)
+        df_histo = df_index.filter(pl.col('COUNTRY') == country)
     
     df_histo = (
         df_histo.filter(pl.col(group_by).is_not_null())
@@ -164,8 +244,93 @@ def get_histo_users(country, group_by):
     )
     return fig
 
+def get_pareto(country, metric):
+    print(f'{country = }')
+    print(f'{metric = }')
+    if country == 'ALL_COUNTRIES':
+        df_pareto = df_global  # no filtering when country is ALL_COUNTRIES 
+    else:   # only use data from selected country
+        df_pareto = df_global.filter(pl.col('COUNTRY') == country)
+    
+    df_pareto = (
+        df_pareto.filter(pl.col(metric).is_not_null())
+        .select('INDEX', 'COUNTRY', 'GENDER' , metric, metric+'_WT')
+        .group_by(['COUNTRY', 'GENDER', metric]).agg(pl.col(metric+'_WT').sum())
+        .with_columns(TOTAL_WT = pl.col(metric+'_WT').sum().over(metric))
+        .sort('TOTAL_WT',descending=False)
+        # .tail(10)
+    ) 
+    print('df_pareto')
+    print(df_pareto)
+    country_title = country.title().replace('_', ' ')
+    
+    fig = px.bar(
+        df_pareto,
+        x= metric+'_WT',
+        y=metric,
+        color='GENDER',
+        title=(
+            f'{country_title}:  {metric} Top 10 PARETO'
+            .upper()
+        ),
+        template=viz_template,
+        orientation='h'
+    )
+    fig.update_layout(
+        # x-title obvious, use empty string to make room for bottom legend
+        # yaxis_title = 'USER COUNT', xaxis_title = metric, 
+        legend=dict(
+            yanchor='top', 
+            xanchor='left',
+            y=1.12,
+            x=-0.02,
+            orientation="h",
+        ),
+    )
+    # fig.update_yaxes(range=(-.5, 6.5))
+    return fig
+
+
+
+def get_choro(df_choro, country):
+    if country != 'ALL_COUNTRIES':
+        df_choro = df_choro.filter(pl.col('COUNTRY') == country)
+    df_choro = (
+        df_choro
+        .select('COUNTRY', 'GENDER')
+        .with_columns(
+            COUNT = pl.col('GENDER').count().over(['COUNTRY', 'GENDER'])
+        )
+    )
+    fig_choro = px.choropleth(
+        df_choro,   # .group_by('COUNTRY').agg(pl.col('GENDER').sum()),
+        locations='COUNTRY', 
+        locationmode='country names', 
+        scope='world',
+        color='COUNTRY',
+        template=viz_template,
+        title=(f'{country.upper()}'),
+        labels='COUNTRY',
+        projection="natural earth"
+    )
+    fig_choro.update_traces(
+        showlegend=False,
+    )
+    fig_choro.update_geos(
+        resolution=110,
+        # showcoastlines=True, coastlinecolor="RebeccaPurple",
+        showland=True, landcolor="LightGreen",
+        showocean=True, oceancolor="LightBlue",
+        # showlakes=True, lakecolor="Blue",
+        # showrivers=True, rivercolor="Blue"
+    )
+
+    fig_choro.update(layout_coloraxis_showscale=False)
+    # fig_choro.update_layout(show_legend=False)
+    return fig_choro
+
 #----- GATHER AND CLEAN DATA ---------------------------------------------------
-if os.path.exists('df.parquet'):     # read parquet file if it exists
+if False: # os.path.exists('df.parquet'):     # read parquet file if it exists
     print('reading data from parquet file')
     df_global=pl.read_parquet('df.parquet')
 else:                                # read csv file, clean, save df as parquet
@@ -173,9 +338,21 @@ else:                                # read csv file, clean, save df as parquet
     print(df_global)
     df_global.write_parquet('df.parquet')
 
-print(df_global.shape)
-print(df_global)
-print(df_global.glimpse())
+cols = ['CS_LANG', 'AI_ASST', 'AI_FEATURE']
+for col in cols[2:3]:
+    temp_list = sorted(
+        df_global
+        .drop_nulls(subset = col)
+        .unique(col)
+        .get_column(col)
+        .to_list()
+    )
+    print(f'{col = }')
+    print(f'unique values of {col}')
+    for i in temp_list:
+        print(f'{i}: {len(i) = }')
+    print(temp_list)
+
 #----- GLOBALS FROM DATAFRAME --------------------------------------------------
 country_list = sorted(df_global.get_column('COUNTRY').unique().to_list())
 
@@ -188,7 +365,7 @@ dmc_select_group_by = (
         id='group-by',
         data= ['AGE_RANGE', 'EDUCATION', 'YEARS_EXPERIENCE'],
         value='AGE_RANGE',
-        size='xl',
+        size='sm',
     ),
 )
 
@@ -200,58 +377,74 @@ dmc_select_country = (
         id='country',
         data= ['ALL_COUNTRIES'] + country_list,
         value=country_list[0],
-        # value='ALL_COUNTRIES',
-        size='xl',
+        size='sm',
+    ),
+)
+
+dmc_select_metric = (
+    #  look at data for CS_LANG, AI_ASST, or AI_FEATURE
+    dmc.Select(
+        label='Pick one of these metrics:',
+        placeholder="Select one",
+        id='metric',
+        data= ['CS_LANG', 'AI_ASST', 'AI_FEATURE'],
+        value='CS_LANG',
+        size='sm',
     ),
 )
 
 #----- DASH APPLICATION STRUCTURE-----------------------------------------------
 app = Dash()
 app.layout =  dmc.MantineProvider([
-    dmc.Space(h=30),
+    # dmc.Space(h=30),
     html.Hr(style=style_horizontal_thick_line),
     dmc.Text('Gender Patterns for AI Adoption', ta='center', style=style_h2),
     dmc.Text('', ta='center', style=style_h3, id='zip_code'),
     html.Hr(style=style_horizontal_thick_line),
-    dmc.Space(h=30),
     dmc.Grid(children = [
-        dmc.GridCol(dmc.Text('Dashboard Control Panel', 
-            fw=500, # semi-bold
-            style={'fontSize': 28},
-            ),
-            span=3, offset=1
-        )]
-    ),
-    dmc.Space(h=30),
-    dmc.Grid(children = [
-        dmc.GridCol(dmc_select_group_by, span=3, offset = 1),
-        dmc.GridCol(dmc_select_country, span=3, offset = 1),
+        dmc.GridCol(dmc_select_country, span=4, offset = 1),
+        dmc.GridCol(dmc_select_group_by, span=4, offset = 1),
     ]),  
-    dmc.Space(h=75),
+    dmc.Space(h=0),
     html.Hr(style=style_horizontal_thin_line),
-    dmc.Grid(  
-        children = [
-            # dmc.GridCol(dcc.Graph(id='boxplot'), span=4, offset=0),
+  
+    dmc.Grid(children = [
+            dmc.GridCol(dcc.Graph(id='choro'), span=6, offset=0),            
             dmc.GridCol(dcc.Graph(id='histogram-users'), span=6, offset=0), 
-            # dmc.GridCol(dag.AgGrid(id='ag-grid'),span=3, offset=0),           
-        ]
-    ),
+        ]),
+    dmc.Space(h=0),
+    dmc.Grid(children = [
+        dmc.GridCol(dmc_select_metric, span=3, offset = 1),
+    ]),
+    dmc.Grid(children = [
+            dmc.GridCol(dcc.Graph(id='pareto'), span=6, offset=0),            
+            dmc.GridCol(dcc.Graph(id='bar-bell'), span=6, offset=0), 
+        ]),
 ])
 
 @app.callback(
     Output('histogram-users', 'figure'),
+    Output('choro', 'figure'),
+    Output('pareto', 'figure'),
+    Output('bar-bell', 'figure'),
     Input('country', 'value'),
-    Input('group-by', 'value')
+    Input('group-by', 'value'),
+    Input('metric', 'value')
 )
-def update(country, group_by):
+def update(country, group_by, metric):
     print(f'{group_by = }')
     print(f'{country = }')
+    print(f'{metric = }')
     if country == None:
         country = country_list[0]
-    histo_users = get_histo_users(country, group_by)
-    return (
-        histo_users
-    )
+    df_index=df_global.unique('INDEX')
+    histo_users = get_histo_users(df_index, country, group_by)
+    choro = get_choro(df_index, country)
+    pareto=get_pareto(country, metric)
+    bar_bell = histo_users   # place holder
+
+
+    return histo_users, choro, pareto, bar_bell
 
 if __name__ == '__main__':
     app.run(debug=True)
