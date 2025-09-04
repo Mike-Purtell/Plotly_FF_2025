@@ -2,15 +2,11 @@ import polars as pl
 import polars.selectors as cs
 import os
 import plotly.express as px
-import plotly.graph_objects as go
 import dash
 from dash import Dash, dcc, html, Input, Output
 import dash_mantine_components as dmc
 dash._dash_renderer._set_react_version('18.2.0')
 
-# TODO: Fix pareto to only show top 10
-# TODO: unify dashboard theme with visualizations
-# TODO: add barbell plot, male vs. famale for all outputs (AI_ASST, CS_LANG, AI_FEATURES)
 #----- GLOBALS -----------------------------------------------------------------
 style_horizontal_thick_line = {'border': 'none', 'height': '4px', 
     'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
@@ -29,9 +25,19 @@ age_range_order = [ '18–20', '21–29', '30–39',  '40–49', '50–59', '60+
 education_order =['None', 'Elementary', 'High School', 'Some College', 'Bachelors',
                   'Masters',  'Doctorate', 'Professional']
 years_experience_order = ['0', '<1', '1–2', '3–5', '6–10',  '11–16',  '16+']
+# gender color map forces consistency across visualizations and user selections
+gender_color_map = {
+    'Male' : 'CornflowerBlue',
+    'Female' : 'crimson',
+    'Non-binary, genderqueer, or gender non-conforming' : 'Chartreuse',
+    'Prefer not to say' :  'orange',
+    'other' :  'lightbrown',
+}
 #----- FUNCTIONS ---------------------------------------------------------------
 def read_and_clean_csv():
+    ''' read and clead data from csv, save as parquet '''
     print('reading and cleaning csv file')
+    # replace long descriptions of education levels with shorter descriptions
     no_education = 'I’ve never completed any formal education'
     elem_education = 'Primary / elementary school'
     high_school = (
@@ -54,6 +60,7 @@ def read_and_clean_csv():
             AGE_RANGE = cs.starts_with('[3]')
                 .replace('60 or older', '60+')
                 .cast(pl.Categorical()),
+            # replace statments shorten education level
             EDUCATION = cs.starts_with('[12]')
                 .replace(no_education, 'None')
                 .replace(elem_education, 'Elementary')
@@ -65,11 +72,16 @@ def read_and_clean_csv():
             .replace(professional, 'Professional')
             .cast(pl.Categorical()),
             JOB_LEVEL = cs.starts_with('[24]').cast(pl.Categorical()),
+            # reduce length of experience levels
             YEARS_EXPERIENCE = cs.starts_with('[25]')
                 .str.replace(' years', '')
                 .str.replace(' year', '')
                 .str.replace('Less than 1', '<1')
-                .str.replace("I don't have any professional coding experience", '0'),
+                .str.replace(
+                    "I don't have any professional coding experience", 
+                    '0'
+            ),
+            # concat_list combines values for each parameter to a list cell
             CS_LANG = pl.concat_list(cs.starts_with('[44]'))
                 .list.eval(pl.element().filter(pl.element().is_not_null())),
             AI_ASST = pl.concat_list(cs.starts_with('[62]'))
@@ -82,6 +94,7 @@ def read_and_clean_csv():
             AI_ASST_COUNT = pl.col('AI_ASST').list.len(),
             AI_FEATURE_COUNT = pl.col('AI_FEATURE').list.len(),
         )
+        # calculate weight factors.
         .with_columns(
             CS_LANG_WT = pl.when(pl.col('CS_LANG_COUNT') > 0)
                 .then(1/pl.col('CS_LANG_COUNT')).otherwise(pl.lit(0)),
@@ -103,6 +116,7 @@ def read_and_clean_csv():
         .with_columns(cs.integer().cast(pl.UInt8))
         .with_row_index(name='INDEX', offset=1)
         .with_columns(pl.col('INDEX').cast(pl.UInt16))
+        # explode list cells to one item per row, simlar to melt or unpivot
         .explode('CS_LANG') 
         .explode('AI_ASST')
         .explode('AI_FEATURE')
@@ -129,11 +143,13 @@ def read_and_clean_csv():
         .with_columns(   # shorten the long name items
             pl.col('AI_FEATURE')
             .replace(
-                'Assistive technologies (for example, AI-powered text-to-speech and speech-to-text tools)',
+                'Assistive technologies (for example, AI-powered ' +
+                    'text-to-speech and speech-to-text tools)',
                 'Assistive tech'
             )
             .replace(
-                'Asking general questions about software development in natural languages',
+                'Asking general questions about software development ' +
+                    'in natural languages',
                 'Natural Lang Questions'
             )
             .replace(
@@ -160,26 +176,14 @@ def read_and_clean_csv():
                 'Help in choosing framework-related settings and methods',
                 'Framework, settings'
             )
-            .replace(
-                'Performing code reviews',
-                'Code review'
-            )
-            .replace(
-                "I don’t use AI-based assistants",
-                "Don't use"
-            )
+            .replace('Performing code reviews', 'Code review')
+            .replace("I don’t use AI-based assistants", "Don't use")
             .replace(
                 'Language translation and pronunciation',
                 'Foreign Language'
             )
-            .replace(
-                'Natural Lang Questions',
-                'Natural Language'
-            )
-            .replace(
-                'Refactoring code',
-                'Refactoring'
-            )
+            .replace('Natural Lang Questions', 'Natural Language')
+            .replace('Refactoring code', 'Refactoring')
             .replace(
                 'Search in natural language queries for code fragments',
                 'Code fragments'
@@ -189,22 +193,18 @@ def read_and_clean_csv():
                 'Planning, time mgmt'
             )
             .replace(
-                'Summarizing recent code changes to understand what happened more quickly',
+                'Summarizing recent code changes to understand what happened ' +
+                'more quickly',
                 'Code change summary'
             )
-            .replace(
-                'Interactive simulations',
-                'Interactive sims'
-            )
+            .replace('Interactive simulations', 'Interactive sims')
         )
         .with_columns(cs.string().cast(pl.Categorical()))
-        .collect()  # convert Lazy Frame to Data Frame
+        .collect() # lazy to eager
     )
 
 def get_histo_users(df_index, country, group_by):
-    print(f'{group_by = }')
-    print(f'{country = }')
-
+    ''' return histogram of user counts, x is group_by parameter '''
     if group_by == 'AGE_RANGE':
         group_by_order = age_range_order
     elif group_by == 'YEARS_EXPERIENCE':
@@ -224,18 +224,19 @@ def get_histo_users(df_index, country, group_by):
         df_histo.unique('INDEX').sort(group_by),
         group_by,
         color='GENDER',
+        color_discrete_map = gender_color_map,
         title=f'{country_title}:  user counts by {group_by}'.upper(),
         template=viz_template
     )
-
     fig.update_layout(
-        # x-title obvious, use empty string to make room for bottom legend
         yaxis_title = 'USER COUNT', xaxis_title = group_by, 
         legend=dict(
             yanchor='top', 
             xanchor='left',
             y=1.1,
-            orientation="h",
+            orientation='h',
+            title_font_family='Arial',
+            font=dict(size= 8)
         ),
         xaxis=dict(
             categoryorder='array',  # Specify custom order
@@ -245,30 +246,64 @@ def get_histo_users(df_index, country, group_by):
     return fig
 
 def get_pareto(country, metric):
-    print(f'{country = }')
-    print(f'{metric = }')
+    ''' return pareto of selected metric, selected country '''
     if country == 'ALL_COUNTRIES':
-        df_pareto = df_global  # no filtering when country is ALL_COUNTRIES 
+        df_pareto = (
+            df_global
+            .lazy()
+            .filter(pl.col(metric).is_not_null())
+            .select('INDEX', 'GENDER' , metric, metric+'_WT')
+            .group_by(['GENDER', metric]).agg(pl.col(metric+'_WT').sum())
+            .with_columns(COUNTRY_WT = pl.col(metric+'_WT').sum().over([metric]))
+            .sort('COUNTRY_WT',descending=False)
+            .collect()   # lazy to eager
+        ) 
+        top_10_list = (
+            df_pareto
+            .lazy()
+            .unique([metric, 'COUNTRY_WT'])
+            .sort('COUNTRY_WT', descending=True)
+            .collect()
+            .get_column(metric)
+            .head(10)
+            .to_list()
+        )
     else:   # only use data from selected country
-        df_pareto = df_global.filter(pl.col('COUNTRY') == country)
+        df_pareto = (
+            df_global
+            .lazy()
+            .filter(pl.col(metric).is_not_null())
+            .filter(pl.col('COUNTRY') == country)
+            .select('INDEX', 'COUNTRY', 'GENDER' , metric, metric+'_WT')
+            .group_by(['COUNTRY', 'GENDER', metric]).agg(pl.col(metric+'_WT').sum())
+            .with_columns(COUNTRY_WT = pl.col(metric+'_WT').sum().over(['COUNTRY', metric]))
+            .sort('COUNTRY_WT',descending=False)
+            .collect() # lazy to eager
+        ) 
+        top_10_list = (
+            df_pareto
+            .lazy()
+            .unique(['COUNTRY', metric, 'COUNTRY_WT'])
+            .sort('COUNTRY_WT', descending=True)
+            .collect() # lazy to eager
+            .get_column(metric)
+            .head(10)
+            .to_list()
+        )
     
     df_pareto = (
-        df_pareto.filter(pl.col(metric).is_not_null())
-        .select('INDEX', 'COUNTRY', 'GENDER' , metric, metric+'_WT')
-        .group_by(['COUNTRY', 'GENDER', metric]).agg(pl.col(metric+'_WT').sum())
-        .with_columns(TOTAL_WT = pl.col(metric+'_WT').sum().over(metric))
-        .sort('TOTAL_WT',descending=False)
-        # .tail(10)
-    ) 
-    print('df_pareto')
-    print(df_pareto)
+        df_pareto
+        .filter(pl.col(metric).is_in(top_10_list))
+        .sort('COUNTRY_WT')
+    )
     country_title = country.title().replace('_', ' ')
     
     fig = px.bar(
-        df_pareto,
+        df_pareto.filter(pl.col(metric).is_in(top_10_list)),
         x= metric+'_WT',
         y=metric,
         color='GENDER',
+        color_discrete_map=gender_color_map,
         title=(
             f'{country_title}:  {metric} Top 10 PARETO'
             .upper()
@@ -277,22 +312,102 @@ def get_pareto(country, metric):
         orientation='h'
     )
     fig.update_layout(
-        # x-title obvious, use empty string to make room for bottom legend
-        # yaxis_title = 'USER COUNT', xaxis_title = metric, 
         legend=dict(
             yanchor='top', 
             xanchor='left',
             y=1.12,
             x=-0.02,
-            orientation="h",
+            orientation='h',
+            title_font_family='Arial',
+            font=dict(size= 8)
         ),
+        yaxis=dict(
+            categoryorder='array',  # Specify custom order
+            categoryarray=top_10_list,  # Desired order of categories
+        )
     )
-    # fig.update_yaxes(range=(-.5, 6.5))
+    fig.update_yaxes(range=(-0.5, 10))
     return fig
 
+def get_bar_bell(country, metric):
+    ''' make a barbell plot of metric, comparing Male and Female '''
+    if country == 'ALL_COUNTRIES':
+        df_barbell = (
+            df_global
+            .lazy()
+            .filter(pl.col(metric).is_not_null())
+            .filter(pl.col('GENDER').is_in(['Male', 'Female']))
+            .select('INDEX', 'GENDER' , metric, metric+'_WT')
+            .group_by(['GENDER', metric]).agg(pl.col(metric+'_WT').sum())
+            .with_columns(COUNTRY_WT = pl.col(metric+'_WT').sum().over([metric]))
+            .sort('COUNTRY_WT',descending=False)
+            .collect()  # lazy to eager
+        ) 
+        top_10_list = (
+            df_barbell
+            .lazy()
+            .unique([metric, 'COUNTRY_WT'])
+            .sort('COUNTRY_WT', descending=True)
+            .collect() # lazy to eager
+            .get_column(metric)
+            .head(10)
+            .to_list()
+        )
+    else:   # only use data from selected country
+        df_barbell = (
+            df_global
+            .lazy()
+            .filter(pl.col('GENDER').is_in(['Male', 'Female']))
+            .filter(pl.col(metric).is_not_null())
+            .filter(pl.col('COUNTRY') == country)
+            .select('INDEX', 'COUNTRY', 'GENDER' , metric, metric+'_WT')
+            .group_by(['COUNTRY', 'GENDER', metric]).agg(pl.col(metric+'_WT').sum())
+            .with_columns(COUNTRY_WT = pl.col(metric+'_WT').sum().over(['COUNTRY', metric]))
+            .sort('COUNTRY_WT',descending=False)
+            .collect()  # lazy to eager
+        ) 
+        top_10_list = (
+            df_barbell
+            .lazy()
+            .unique(['COUNTRY', metric, 'COUNTRY_WT'])
+            .sort('COUNTRY_WT', descending=True)
+            .collect() # lazy to eager
+            .get_column(metric)
+            .head(10)
+            .to_list()
+        )
 
+    df_barbell = (
+        df_barbell
+        .filter(pl.col(metric).is_in(top_10_list))
+        .pivot(
+            on=metric,
+            values=metric+'_WT',
+            index='GENDER'
+        )
+        .sort('GENDER')
+    )
+    country_title = country.title().replace('_', ' ')
+    
+    fig = px.line(
+        df_barbell.sort('GENDER'),
+        y= top_10_list,
+        x='GENDER',
+        color_discrete_map=gender_color_map,
+        title=(f'{country_title}:  {metric} Top 10 BAR_BELL PLOT'.upper()),
+        template=viz_template,
+        orientation='h',
+        markers=True,
+    )
+    fig.update_layout(
+        yaxis_title = metric, xaxis_title = 'GENDER', 
+        legend=dict(title=metric),
+    )
+    fig.update_traces(marker=dict(size=22, opacity=0.75))
+    return fig
 
 def get_choro(df_choro, country):
+    ''' return world choropleth highlighting selected country or countries '''
     if country != 'ALL_COUNTRIES':
         df_choro = df_choro.filter(pl.col('COUNTRY') == country)
     df_choro = (
@@ -326,41 +441,23 @@ def get_choro(df_choro, country):
     )
 
     fig_choro.update(layout_coloraxis_showscale=False)
-    # fig_choro.update_layout(show_legend=False)
     return fig_choro
 
 #----- GATHER AND CLEAN DATA ---------------------------------------------------
-if False: # os.path.exists('df.parquet'):     # read parquet file if it exists
+if os.path.exists('df.parquet'):     # read parquet file if it exists
     print('reading data from parquet file')
     df_global=pl.read_parquet('df.parquet')
-else:                                # read csv file, clean, save df as parquet
+else:  # if no parquet file, read csv file, clean, save df as parquet
     df_global = read_and_clean_csv()
-    print(df_global)
     df_global.write_parquet('df.parquet')
-
-cols = ['CS_LANG', 'AI_ASST', 'AI_FEATURE']
-for col in cols[2:3]:
-    temp_list = sorted(
-        df_global
-        .drop_nulls(subset = col)
-        .unique(col)
-        .get_column(col)
-        .to_list()
-    )
-    print(f'{col = }')
-    print(f'unique values of {col}')
-    for i in temp_list:
-        print(f'{i}: {len(i) = }')
-    print(temp_list)
 
 #----- GLOBALS FROM DATAFRAME --------------------------------------------------
 country_list = sorted(df_global.get_column('COUNTRY').unique().to_list())
 
 #----- DASH COMPONENTS------ ---------------------------------------------------
 dmc_select_group_by = (
-    #  group by country, age, education
     dmc.Select(
-        label='Group Data by',
+        label='Select x-axis parameter for this Histogram',
         placeholder="Select one",
         id='group-by',
         data= ['AGE_RANGE', 'EDUCATION', 'YEARS_EXPERIENCE'],
@@ -368,23 +465,19 @@ dmc_select_group_by = (
         size='sm',
     ),
 )
-
 dmc_select_country = (
-    #  group by country, age, education
     dmc.Select(
-        label='Filter by Country - Pick 1 or All',
+        label='Select Country for all figures',
         placeholder="Select one",
         id='country',
         data= ['ALL_COUNTRIES'] + country_list,
-        value=country_list[0],
+        value='United States',
         size='sm',
     ),
 )
-
 dmc_select_metric = (
-    #  look at data for CS_LANG, AI_ASST, or AI_FEATURE
     dmc.Select(
-        label='Pick one of these metrics:',
+        label='Select metric for figures below',
         placeholder="Select one",
         id='metric',
         data= ['CS_LANG', 'AI_ASST', 'AI_FEATURE'],
@@ -395,10 +488,12 @@ dmc_select_metric = (
 
 #----- DASH APPLICATION STRUCTURE-----------------------------------------------
 app = Dash()
+server = app.server
 app.layout =  dmc.MantineProvider([
     # dmc.Space(h=30),
     html.Hr(style=style_horizontal_thick_line),
     dmc.Text('Gender Patterns for AI Adoption', ta='center', style=style_h2),
+    dmc.Text('Data source is Cornell University', ta='center', style=style_h3),
     dmc.Text('', ta='center', style=style_h3, id='zip_code'),
     html.Hr(style=style_horizontal_thick_line),
     dmc.Grid(children = [
@@ -407,14 +502,13 @@ app.layout =  dmc.MantineProvider([
     ]),  
     dmc.Space(h=0),
     html.Hr(style=style_horizontal_thin_line),
-  
     dmc.Grid(children = [
             dmc.GridCol(dcc.Graph(id='choro'), span=6, offset=0),            
             dmc.GridCol(dcc.Graph(id='histogram-users'), span=6, offset=0), 
         ]),
     dmc.Space(h=0),
     dmc.Grid(children = [
-        dmc.GridCol(dmc_select_metric, span=3, offset = 1),
+        dmc.GridCol(dmc_select_metric, span=3, offset = 5),
     ]),
     dmc.Grid(children = [
             dmc.GridCol(dcc.Graph(id='pareto'), span=6, offset=0),            
@@ -432,18 +526,13 @@ app.layout =  dmc.MantineProvider([
     Input('metric', 'value')
 )
 def update(country, group_by, metric):
-    print(f'{group_by = }')
-    print(f'{country = }')
-    print(f'{metric = }')
-    if country == None:
+    if country is None:
         country = country_list[0]
     df_index=df_global.unique('INDEX')
     histo_users = get_histo_users(df_index, country, group_by)
     choro = get_choro(df_index, country)
     pareto=get_pareto(country, metric)
-    bar_bell = histo_users   # place holder
-
-
+    bar_bell = get_bar_bell(country, metric)
     return histo_users, choro, pareto, bar_bell
 
 if __name__ == '__main__':
