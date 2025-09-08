@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import dash
 from dash import Dash, dcc, html, Input, Output
 import dash_mantine_components as dmc
+import dash_ag_grid as dag
 dash._dash_renderer._set_react_version('18.2.0')
 
 # #----- GLOBALS -----------------------------------------------------------------
@@ -73,11 +74,9 @@ def read_and_clean_csv():
                 .replace(r')', '') # replace left parens with underscores
         )
         .select(
-            ['TYPE', 'DELIVERED', 'RECEIVED', 'LOCKER_NAME', 'LOCKER_SIZE',
-            'LOCKER_BOX_DOOR', 'PICKUP_DURATION', 'DELIVERY_DURATION', 
-            'LOCATION_TYPE', 'ADDRESS', 'LATITUDE', 'LONGITUDE', 'BOROUGH',
-            'RECEIVE_DATE', 'CREATED_DATE', 'DELIVERY_DATE', 'WITHDRAW_DATE', 
-            'EXPIRE_DATE']
+            ['BOROUGH', 'LOCKER_NAME', 'ADDRESS', 'LOCKER_BOX_DOOR', 'LOCKER_SIZE',
+            'LOCATION_TYPE', 
+            'DELIVERY_DATE', 'LATITUDE', 'LONGITUDE']
         )
         .with_columns(
             cs.ends_with('_DATE').str.to_datetime(format="%m/%d/%Y %H:%M"),
@@ -87,7 +86,11 @@ def read_and_clean_csv():
         .with_columns(ADDRESS = pl.col('ADDRESS').str.split(',').list.first())
         .with_columns(RENTAL_COUNT = pl.col('ADDRESS').count().over('ADDRESS'))
         .with_columns(
-            LOCKER_COUNT = pl.col('ADDRESS').count().over(['ADDRESS','LOCKER_BOX_DOOR']))
+            LOCKER_COUNT = pl.col('ADDRESS')
+                .count()
+                .over(['ADDRESS','LOCKER_BOX_DOOR'])
+        )
+        .drop('LOCKER_BOX_DOOR')
         .collect()
     )
 
@@ -98,13 +101,11 @@ def get_scatter_map(borough):
         'BOROUGH', 'ZIP_CODE', 'RENTAL_COUNT', 'LOCKER_COUNT'
     ]
     df_group_by = df_global.group_by(group_by_cols).len()
-
     if len(borough) < 3:
         df_group_by = (
             df_group_by
             .filter(pl.col('BOROUGH').is_in(borough))
         )
-    print(df_group_by)
 
     fig_scatter_map = px.scatter_map(
         df_group_by,
@@ -142,25 +143,12 @@ def get_histogram(address):
         .filter(pl.col('ADDRESS') == address)
         .sort('LOCKER_SIZE')
     )
-    print(df_histo.glimpse())
-    this_borough = ''
-    try:
-        this_borough = df_histo.item(0, 'BOROUGH')
-    except:
-        pass
-    print(f'{this_borough = }')
-    this_locker_name = ''
-    try:
-        this_locker_name = df_histo.item(0, 'LOCKER_NAME')
-    except:
-        pass
-    print(f'{this_locker_name = }')
+    this_borough = df_histo.item(0, 'BOROUGH')
+    this_locker_name = df_histo.item(0, 'LOCKER_NAME')
 
     fig_histo = px.histogram(
         df_histo,
-        x='LOCKER_SIZE',
-        # title=f'{this_locker_name}, {this_borough}<br><sup>RENTAL COUNT BY LOCKER SIZE'.upper(),
-        
+        x='LOCKER_SIZE',      
         title=(
             f'{this_locker_name}, {this_borough}'.upper() + '<br>' + 
             f'<sup>{address}<br>'.upper() +
@@ -189,29 +177,15 @@ def get_time_plot(address):
         .with_columns(RENTAL_COUNT = pl.col('LOCKER_SIZE').cum_count().over('LOCKER_SIZE')
         )
     )
-    print(df_time_plot.glimpse())
-    this_borough = ''
-    try:
-        this_borough = df_time_plot.item(0, 'BOROUGH')
-    except:
-        pass
-    print(f'{this_borough = }')
-    this_locker_name = ''
-    try:
-        this_locker_name = df_time_plot.item(0, 'LOCKER_NAME')
-    except:
-        pass
-    print(f'{this_locker_name = }')
+    this_borough = df_time_plot.item(0, 'BOROUGH')
+    this_locker_name = df_time_plot.item(0, 'LOCKER_NAME')
 
- 
     size_list = df_time_plot.unique('LOCKER_SIZE').get_column('LOCKER_SIZE').to_list()
-    print(f'{size_list = }')
     time_plot = go.Figure()
     for s in size_list:
         trace_color = size_color_map[s]
-        print(f'{s} color is {trace_color}')
         df_size = df_time_plot.filter(pl.col('LOCKER_SIZE') ==  s).sort('DELIVERY_DATE')
-        time_plot.add_trace(go.Line(
+        time_plot.add_trace(go.Scatter(
             x=df_size['DELIVERY_DATE'], y=df_size['RENTAL_COUNT'],
             name=s,
             mode='lines+markers',
@@ -220,8 +194,6 @@ def get_time_plot(address):
             )
         )
         max_y = df_size['RENTAL_COUNT'].to_list()[-1]
-        print(f'{max_y = }')
-
         max_x = df_size['DELIVERY_DATE'].to_list()[-1]
 
         time_plot.add_annotation(
@@ -245,17 +217,51 @@ def get_time_plot(address):
     time_plot.update_yaxes(showgrid=False)
     return time_plot
 
+def get_ag_col_defs(columns):
+    ''' return setting for ag columns, with numeric formatting '''
+    ag_col_defs = []
+    for i, col in enumerate(columns):
+        if col == 'LOCKER_SIZE':
+            col_width = 100
+        else:
+            col_width = 200
+        ag_col_defs.append({
+            'field':col, 
+            'width': col_width, 
+            'floatingFilter': True,
+            "filter": "agTextColumnFilter", 
+            "suppressHeaderMenuButton": True,
+        })
+    return ag_col_defs
+
+def get_card(title, value, id=''):
+    card_bg_color = '#F5F5F5'
+    return(
+        dmc.Card(children=[
+            dmc.Text(f'{title}', ta='center', fz=24),
+            dmc.Text(f'{value}', ta='center', fz=20, c='blue', id=id,),
+        ],
+        style={'backgroundColor': card_bg_color}, 
+        #mx is left & right margin, my top & bottom margin
+        withBorder=True, shadow='sm', radius='xl', mx=2, my=2
+        )
+    )
 
 #----- GATHER AND CLEAN DATA ---------------------------------------------------
-if False:   # os.path.exists('df.parquet'):     # read parquet file if it exists
+if os.path.exists('df.parquet'):     # read parquet file if it exists
     print('reading data from parquet file')
     df_global=pl.read_parquet('df.parquet')
 else:  # if no parquet file, read csv file, clean, save df as parquet
     df_global = read_and_clean_csv()
     df_global.write_parquet('df.parquet')
 
-print(df_global)
-print(df_global.glimpse())
+#----- INFO CARDS --------------------------------------------------------------
+card_borough = get_card('BOROUGH', '', id='card-borough')
+card_locker_name = get_card('LOCKER_NAME', '', id='card-locker-name')
+card_address = get_card('ADDRESS', '', id='card-address')
+card_location_type = get_card('LOCATION_TYPE', '', id='card-location-type')
+card_rental_count = get_card('RENTAL_COUNT', '', id='card-rental-count')
+card_locker_count = get_card('LOCKER_COUNT', '', id='card-locker-count')
 
 # #----- DASH APPLICATION STRUCTURE---------------------------------------------
 app = Dash()
@@ -267,10 +273,22 @@ app.layout =  dmc.MantineProvider([
     dmc.Grid(children = [
         dmc.GridCol(dmc_select_borough, span=4, offset = 1),
     ]),  
+        dmc.Space(h=30), 
+    # dmc.Grid(children = [dmc.GridCol(dmc_button_calc, span=2, offset=1)]),
+    dmc.Grid(children = [
+        dmc.GridCol(card_borough, span=2, offset=0),
+        dmc.GridCol(card_locker_name, span=2, offset=0),
+        dmc.GridCol(card_address, span=2, offset=0),
+        dmc.GridCol(card_location_type, span=2, offset=0),
+        dmc.GridCol(card_rental_count, span=2, offset=0),
+        dmc.GridCol(card_locker_count, span=2, offset=0),
+    ]),  
+    dmc.Space(h=30),
     dmc.Space(h=0),
     html.Hr(style=style_horizontal_thin_line),
     dmc.Grid(children = [
-            dmc.GridCol(dcc.Graph(id='scatter-map'), span=6, offset=0),            
+            dmc.GridCol(dcc.Graph(id='scatter-map'), span=6, offset=0),  
+            dmc.GridCol(dag.AgGrid(id='ag-grid'),span=5, offset=0),              
             
         ]),
     dmc.Grid(children = [
@@ -301,6 +319,14 @@ def update_scatter(selected_borough_list):
 @app.callback(
     Output('histo', 'figure'),
     Output('time-plot', 'figure'),
+    Output('ag-grid', 'columnDefs'),  # columns vary by dataset
+    Output('ag-grid', 'rowData'),
+    Output('card-borough', 'children'), 
+    Output('card-locker-name', 'children'), 
+    Output('card-address', 'children'), 
+    Output('card-location-type', 'children'),
+    Output('card-rental-count', 'children'), 
+    Output('card-locker-count', 'children'),
     Input('scatter-map', 'hoverData')
 )
 def update_histo(hover_info):
@@ -313,8 +339,41 @@ def update_histo(hover_info):
         print('key points not found')
     histogram = get_histogram(address)
     time_plot = get_time_plot(address)
+    df_table = (
+        df_global
+        .filter(pl.col('ADDRESS') == address)
+        .select('BOROUGH', 'LOCKER_NAME', 'DELIVERY_DATE', 'LOCKER_SIZE')
+        .with_columns(
+            pl.col('DELIVERY_DATE')
+            .dt.to_string()
+            .str.split(' ').list.first()
+        )
+    )
+    ag_col_defs = get_ag_col_defs(df_table.columns)
+    ag_row_data = df_table.to_dicts()
+    df_address = df_global.filter(pl.col('ADDRESS') == address )
+    borough = df_address.item(0, 'BOROUGH')
+    locker_name = df_address.item(0, 'LOCKER_NAME')
+    address = df_address.item(0, 'ADDRESS')
+    location_type = df_address.item(0, 'LOCATION_TYPE')
+    rental_count = df_address.item(0, 'RENTAL_COUNT')
+    locker_count = df_address.item(0, 'LOCKER_COUNT')
+    # print('df_address')
+    # print(df_address)
+    print(f'{borough = }')
+    print(f'{locker_name = }')
+    print(f'{address = }')
+    print(f'{location_type = }')
+    print(f'{rental_count = }')
+    print(f'{locker_count = }')
+    print(df_address.glimpse())
 
-    return histogram, time_plot
+    return (
+        histogram, time_plot, ag_col_defs, ag_row_data,
+        borough, locker_name, address,
+        location_type, rental_count, locker_count
+        # locker_type, rental_count, locker_count
+    )
 
 if __name__ == '__main__':
     app.run(debug=True)
