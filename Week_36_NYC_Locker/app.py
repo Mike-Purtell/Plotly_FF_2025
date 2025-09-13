@@ -20,8 +20,7 @@ style_horizontal_thin_line = {'border': 'none', 'height': '2px',
 
 style_h2 = {'text-align': 'center', 'font-size': '40px', 
             'fontFamily': 'Arial','font-weight': 'bold', 'color': 'gray'}
-style_h3 = {'text-align': 'center', 'font-size': '24px', 
-            'fontFamily': 'Arial','font-weight': 'normal'}
+
 viz_template = 'plotly_dark'
 
 borough_list = ['Brooklyn', 'Manhattan', 'Queens']
@@ -46,8 +45,8 @@ dmc_select_borough = (
         data= ['Brooklyn', 'Manhattan', 'Queens'],
         value=['Brooklyn', 'Manhattan', 'Queens'],
         searchable=False,  # Enables search functionality
-        clearable=True,   # Allows clearing the selection
-        size='sm',
+        clearable=True,    # Allows clearing the selection
+        size='xl',
     ),
 )
 
@@ -68,10 +67,10 @@ def read_and_clean_csv():
         )
         .rename(    
             lambda c: 
-                c.upper()          # all column names to upper case
-                .replace(' ', '_') # replace blanks with underscores
-                .replace(r'(', '') # replace left parens with underscores
-                .replace(r')', '') # replace left parens with underscores
+                c.upper()            # all column names to upper case
+                .replace(' ', '_')   # replace blanks with underscores
+                .replace(r'(', '')   # replace left parens with underscores
+                .replace(r')', '')   # replace left parens with underscores
         )
         .select(
             ['BOROUGH', 'LOCKER_NAME', 'ADDRESS', 'LOCKER_BOX_DOOR', 'LOCKER_SIZE',
@@ -133,7 +132,6 @@ def get_scatter_map(borough):
         showlegend=False
     )
 
-    # fig_scatter_map.update_traces(showlegend=False)
     return fig_scatter_map
 
 def get_histogram(address):
@@ -154,7 +152,6 @@ def get_histogram(address):
             f'<sup>{address}<br>'.upper() +
             'RENTAL COUNT BY LOCKER SIZE' + '</sup>'
         ),
-        
         template=viz_template
     )
     fig_histo.update_layout(
@@ -195,7 +192,6 @@ def get_time_plot(address):
         )
         max_y = df_size['RENTAL_COUNT'].to_list()[-1]
         max_x = df_size['DELIVERY_DATE'].to_list()[-1]
-
         time_plot.add_annotation(
             text=s,
             xref='x',   x=max_x,  xanchor='left', xshift = 10,
@@ -207,7 +203,7 @@ def get_time_plot(address):
         title=(
             f'{this_locker_name}, {this_borough}'.upper() + '<br>' + 
             f'<sup>{address}<br>'.upper() +
-            'RENTAL COUNT TIMELINE BY LOCKER SIZE' + '</sup>'
+            'CUMULATIVE TIMELINES' + '</sup>'
         ),
         yaxis_title = 'CUMULATIVE RENTAL COUNT', xaxis_title = '', 
         template=viz_template,
@@ -273,8 +269,7 @@ app.layout =  dmc.MantineProvider([
     dmc.Grid(children = [
         dmc.GridCol(dmc_select_borough, span=4, offset = 1),
     ]),  
-        dmc.Space(h=30), 
-    # dmc.Grid(children = [dmc.GridCol(dmc_button_calc, span=2, offset=1)]),
+    dmc.Space(h=30), 
     dmc.Grid(children = [
         dmc.GridCol(card_borough, span=2, offset=0),
         dmc.GridCol(card_locker_name, span=2, offset=0),
@@ -289,7 +284,6 @@ app.layout =  dmc.MantineProvider([
     dmc.Grid(children = [
             dmc.GridCol(dcc.Graph(id='scatter-map'), span=6, offset=0),  
             dmc.GridCol(dag.AgGrid(id='ag-grid'),span=5, offset=0),              
-            
         ]),
     dmc.Grid(children = [
             dmc.GridCol(dcc.Graph(id='histo'), span=6, offset=0),            
@@ -330,11 +324,9 @@ def update_scatter(selected_borough_list):
     Input('scatter-map', 'hoverData')
 )
 def update_histo(hover_info):
-    print(f'{hover_info = }')
     address = '508  East 12th St'
     if hover_info is not None and 'points' in hover_info.keys():
         address = hover_info['points'][0]['customdata'][2]
-        print(f'{address = }')
     else:
         print('key points not found')
     histogram = get_histogram(address)
@@ -358,21 +350,10 @@ def update_histo(hover_info):
     location_type = df_address.item(0, 'LOCATION_TYPE')
     rental_count = df_address.item(0, 'RENTAL_COUNT')
     locker_count = df_address.item(0, 'LOCKER_COUNT')
-    # print('df_address')
-    # print(df_address)
-    print(f'{borough = }')
-    print(f'{locker_name = }')
-    print(f'{address = }')
-    print(f'{location_type = }')
-    print(f'{rental_count = }')
-    print(f'{locker_count = }')
-    print(df_address.glimpse())
-
     return (
         histogram, time_plot, ag_col_defs, ag_row_data,
         borough, locker_name, address,
         location_type, rental_count, locker_count
-        # locker_type, rental_count, locker_count
     )
 
 if __name__ == '__main__':
