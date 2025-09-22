@@ -108,6 +108,7 @@ def get_tl_by_year(df_callback, name_org_list):
         )
     # high rankings gets a low rank numbers. Reverse y to put #1 at the top
     fig.update_yaxes(autorange='reversed')
+    fig.update_xaxes(showgrid=False)  # y gridlines kept becuase of log scale
     return fig
 
 def get_tl_by_career_year(df_callback, name_org_list):
@@ -130,6 +131,7 @@ def get_tl_by_career_year(df_callback, name_org_list):
         )
     # high rankings gets a low rank numbers. Reverse y to put #1 at the top
     fig.update_yaxes(autorange='reversed')
+    fig.update_xaxes(showgrid=False)  # y gridlines kept becuase of log scale
     return fig
 
 #----- GLOBALS -----------------------------------------------------------------
