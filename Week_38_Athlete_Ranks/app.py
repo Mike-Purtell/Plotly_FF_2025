@@ -59,27 +59,76 @@ df  = (
         RANK_MEAN = pl.col('RANK').cast(pl.UInt16).mean().over('NAME').cast(pl.Float32),
         FIRST_YEAR = pl.col('YEAR').min().over('NAME').cast(pl.UInt16),
         LEAGUE_ABBR = pl.col('LEAGUE').str.to_uppercase(),
-    )
-    .join(df_league_names, on = 'LEAGUE_ABBR', how='left')
-    .filter(pl.col('HIGHEST_RANK') <= 10)
-     # .sort('')
-)
-print(df.shape)
-print(df.glimpse())
-
-# #----- FUNCTIONS ---------------------------------------------------------------
-def get_card(title, value, id=''):
-    card_bg_color = '#F5F5F5'
-    return(
-        dmc.Card(children=[
-            dmc.Text(f'{title}', ta='center', fz=24),
-            dmc.Text(f'{value}', ta='center', fz=20, c='blue', id=id,),
-        ],
-        style={'backgroundColor': card_bg_color}, 
-        #mx is left & right margin, my top & bottom margin
-        withBorder=True, shadow='sm', radius='xl', mx=2, my=2
+        NAME_ORG = (  # form of NAME_ORG is NBA: Stephen Curry,  etc.
+            pl.col('LEAGUE').str.to_uppercase() + pl.lit(': ') +
+            pl.col('NAME').str.to_titlecase()
         )
     )
+    .collect()
+    .join(df_league_names, on = 'LEAGUE_ABBR', how='left')
+)
+
+top_5_list = sorted(list(
+    df
+    .lazy()
+    .unique('NAME_ORG')    
+    .sort('LEAGUE_ABBR', 'RANK_MED', 'RANK_MEAN')
+    .with_columns(
+        RANK_LEAGUE = 
+            pl.col('LEAGUE_ABBR')
+            .cum_count()
+            .over('LEAGUE_ABBR')
+            .cast(pl.UInt8)
+        )
+    .filter(pl.col('RANK_LEAGUE') <= 5)
+    .collect()
+    ['NAME_ORG']
+))
+
+# #----- FUNCTIONS ---------------------------------------------------------------
+def get_tl_by_year(df_callback, name_org_list):
+    # timeline by calendar year
+    fig = px.line(
+        df_callback.sort('YEAR'),
+        x='YEAR',
+        y='RANK',
+        color='NAME_ORG',
+        template=viz_template,
+        markers=True,
+        line_shape='spline',
+        category_orders={'NAME_ORG': name_org_list}, # handy way to sort legend
+        log_y=True,
+        title='Timeline by calendar year',
+    )
+    fig.update_layout(
+        xaxis_title='CALENDAR YEAR', yaxis_title='RANK -- LOG SCALE',
+        legend_title = 'Athlete'
+        )
+    fig.update_yaxes(autorange='reversed')
+    fig.update_xaxes(showgrid=False)
+    return fig
+
+def get_tl_by_career_year(df_callback, name_org_list):
+    # timeline by career year
+    fig = px.line(
+        df_callback.sort('YEAR'),
+        x='CAREER_YEAR',
+        y='RANK',
+        color='NAME_ORG',
+        template=viz_template,
+        markers=True,
+        line_shape='spline',
+        category_orders={'NAME_ORG': name_org_list}, # handy way to sort legend
+        log_y=True,
+        title='Timeline by career year'
+    )
+    fig.update_layout(
+        xaxis_title='CAREER YEAR', yaxis_title='RANK -- LOG SCALE',
+        legend_title = 'Athlete'
+        )
+    fig.update_yaxes(autorange='reversed')
+    fig.update_xaxes(showgrid=False)
+    return fig
 
 #----- GLOBALS -----------------------------------------------------------------
 style_horizontal_thick_line = {'border': 'none', 'height': '4px', 
@@ -117,10 +166,15 @@ app = Dash()
 server = app.server
 app.layout =  dmc.MantineProvider([
     html.Hr(style=style_horizontal_thick_line),
-    dmc.Text('Consistency - top 5 athletes per league', ta='center', style=style_h2),
+    dmc.Text(
+        'Consistency - top 5 athletes per league', 
+        ta='center', 
+        style=style_h2
+    ),
     html.Hr(style=style_horizontal_thick_line),
     dmc.Grid(children = [dmc.GridCol(dmc_select_league, span=8, offset = 1)]),
-    dmc.Grid(children = [dmc.GridCol(dmc_selected_leagues, span=8, offset = 1)]),
+    dmc.Grid(children = [
+        dmc.GridCol(dmc_selected_leagues, span=8, offset = 1)]),
     dmc.Grid(children = [
         dmc.GridCol(dcc.Graph(id='by-year'), span=6, offset=0),            
         dmc.GridCol(dcc.Graph(id='by-career-year'), span=6, offset=0), 
@@ -134,7 +188,6 @@ app.layout =  dmc.MantineProvider([
     Input('select-leagues', 'value')
 )
 def choose_framework(value):
-    print(f'{value = }')
     df_callback=(
         df
         .filter(pl.col('LEAGUE_NAME').is_in(value))
