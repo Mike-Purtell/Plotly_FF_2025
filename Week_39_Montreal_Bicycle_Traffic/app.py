@@ -62,7 +62,7 @@ dmc_select_map_style = (
 
 df_locations = pl.read_excel('df_locations.xlsx')
 
-if 'df.parquet' in os.listdir('.'):
+if False: # 'df.parquet' in os.listdir('.'):
     print('reading dataset from parquet file')
     df = pl.read_parquet('df.parquet')
 else:
@@ -90,39 +90,41 @@ else:
         )
     )
     df.write_parquet('df.parquet')
-
+print(df)
 # create a dashboard to show:
 #   slider to filter minimum passages value
 # # Convert Polars DataFrame to a dictionary for Plotly
 # heatmap_data = df.to_dict(as_series=False)
 
-# Create the scatter map
-center_lon = 0.5*(df['LON'].min() + df['LON'].max())
-center_lat = 0.5*(df['LAT'].min() + df['LAT'].max())
-fig = px.scatter_map(
-    df.unique('ID'),
-    lat='LAT', lon='LON',
-    size='PASSAGES_BY_ID',
-    color='PASSAGES_BY_ID', 
-    zoom=9,
-    center={'lat':center_lat, 'lon':center_lon},  
-    map_style=map_types[0],
-    opacity=0.75,
-    custom_data=['LOC', 'NEARBY', 'PASSAGES_BY_ID', 'ID'],
-)
-fig.update_traces(
-    hovertemplate =
-        'Location: %{customdata[0]}<br>' +
-        'Nearby: %{customdata[1]}<br>' +
-        'Passages: %{customdata[2]:,d}<br>' +
-        'ID: %{customdata[3]}<br>' +
-        '<extra></extra>'
-)
-fig.update_layout(
-    title=dict(text='Bicycle traffic by location')
-)
-fig.update(layout_coloraxis_showscale=False)
-# fig.show()
+def get_scatter_map(map_style):
+    # Create the scatter map
+    # replaced midpoints of lat, long with median values to suppress outliers
+    median_lat = df['LAT'].median()
+    median_lon = df['LON'].median()
+    fig = px.scatter_map(
+        df.unique('ID'),
+        lat='LAT', lon='LON',
+        size='PASSAGES_BY_ID',
+        color='PASSAGES_BY_ID', 
+        zoom=11,
+        center={'lat':median_lat, 'lon':median_lon},  
+        map_style=map_style,
+        opacity=0.75,
+        custom_data=['LOC', 'NEARBY', 'PASSAGES_BY_ID', 'ID'],
+    )
+    fig.update_traces(
+        hovertemplate =
+            '%{customdata[0]}<br>' +
+            'Nearby: %{customdata[1]}<br>' +
+            'Passages: %{customdata[2]:,d}<br>' +
+            'ID: %{customdata[3]}<br>' +
+            '<extra></extra>'
+    )
+    fig.update_layout(
+        title=dict(text='Bicycle traffic by location')
+    )
+    fig.update(layout_coloraxis_showscale=False)
+    return fig
 
 # #----- DASH APPLICATION STRUCTURE---------------------------------------------
 app = Dash()
@@ -146,32 +148,29 @@ app.layout =  dmc.MantineProvider([
     # dmc.Space(h=30),
     # dmc.Space(h=0),
     # html.Hr(style=style_horizontal_thin_line),
-    # dmc.Grid(children = [
-    #         dmc.GridCol(dcc.Graph(id='scatter-map'), span=6, offset=0),  
-    #         dmc.GridCol(dag.AgGrid(id='ag-grid'),span=5, offset=0),              
-    #     ]),
+    dmc.Grid(children = [
+            dmc.GridCol(dcc.Graph(id='scatter-map'), span=6, offset=0),  
+            # dmc.GridCol(dag.AgGrid(id='ag-grid'),span=5, offset=0),              
+        ]),
     # dmc.Grid(children = [
     #         dmc.GridCol(dcc.Graph(id='histo'), span=6, offset=0),            
     #         dmc.GridCol(dcc.Graph(id='time-plot'), span=6, offset=0), 
     #     ]),
 ])
-
-
-# @app.callback(
-#     Output('scatter-map', 'figure'),
-
-#     Input('borough', 'value'),
-# )
-# def callback(selected_borough_list):
-#     print(f'{selected_borough_list = }')
-#     if selected_borough_list is None:
-#         print('use first item on borough list')
-#         selected_borough_list = [borough_list[0]]
-#     if not isinstance(selected_borough_list, list):
-#         print('convert single selected borough to list')
-#         selected_borough_list = [borough_list[0]]
-#     scatter_map=get_scatter_map(selected_borough_list)
-#     return scatter_map
+@app.callback(
+    Output('scatter-map', 'figure'),
+    Input('map-style', 'value'),
+)
+def callback(map_style):
+    print(f'{map_style = }')
+    # if selected_borough_list is None:
+    #     print('use first item on borough list')
+    #     selected_borough_list = [borough_list[0]]
+    # if not isinstance(selected_borough_list, list):
+    #     print('convert single selected borough to list')
+    #     selected_borough_list = [borough_list[0]]
+    scatter_map=get_scatter_map(map_style)
+    return scatter_map
 
 if __name__ == '__main__':
     app.run(debug=True)
