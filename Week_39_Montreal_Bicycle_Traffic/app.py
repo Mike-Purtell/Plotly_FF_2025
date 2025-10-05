@@ -24,21 +24,6 @@ style_horizontal_thin_line = {'border': 'none', 'height': '2px',
 style_h2 = {'text-align': 'center', 'font-size': '40px', 
             'fontFamily': 'Arial','font-weight': 'bold', 'color': 'gray'}
 
-viz_template = 'plotly_dark'
-
-borough_list = ['Brooklyn', 'Manhattan', 'Queens']
-borough_color_map = {
-    'Brooklyn'    :  'red',     # 'CornflowerBlue',
-    'Manhattan'   :  'navy',    # 'crimson',
-    'Queens'      :  'green',   # 'Chartreuse',
-}
-
-size_color_map = {
-    'Small'        :  '#00FFFF',  
-    'Medium'       :  '#FF007F',  
-    'Large'        :  '#00FF00',  
-    'Extra Large'  :  '#FFD700', 
-}
 map_types = [
     'basic', 'carto-darkmatter', 'carto-darkmatter-nolabels', 'carto-positron', 
     'carto-positron-nolabels', 'carto-voyager', 'carto-voyager-nolabels', 
@@ -60,12 +45,14 @@ dmc_select_map_style = (
 )
 
 
-df_locations = pl.read_excel('df_locations.xlsx')
-
-if False: # 'df.parquet' in os.listdir('.'):
+if 'df.parquet' in os.listdir('.'):
     print('reading dataset from parquet file')
     df = pl.read_parquet('df.parquet')
 else:
+    print('reading location info from excel file')
+    df_locations = (
+        pl.read_excel('df_locations.xlsx')
+    )
     print('reading dataset from csv file')
     df  = (
         pl.scan_csv('pistes-cyclables-2024.csv')
@@ -90,11 +77,6 @@ else:
         )
     )
     df.write_parquet('df.parquet')
-print(df)
-# create a dashboard to show:
-#   slider to filter minimum passages value
-# # Convert Polars DataFrame to a dictionary for Plotly
-# heatmap_data = df.to_dict(as_series=False)
 
 def get_scatter_map(map_style):
     # Create the scatter map
@@ -111,6 +93,7 @@ def get_scatter_map(map_style):
         map_style=map_style,
         opacity=0.75,
         custom_data=['LOC', 'NEARBY', 'PASSAGES_BY_ID', 'ID'],
+        height=800, width=1200
     )
     fig.update_traces(
         hovertemplate =
@@ -136,39 +119,15 @@ app.layout =  dmc.MantineProvider([
     dmc.Grid(children = [
         dmc.GridCol(dmc_select_map_style, span=2, offset = 1),
     ]),  
-    # dmc.Space(h=30), 
-    # dmc.Grid(children = [
-    #     dmc.GridCol(card_borough, span=2, offset=0),
-    #     dmc.GridCol(card_locker_name, span=2, offset=0),
-    #     dmc.GridCol(card_address, span=2, offset=0),
-    #     dmc.GridCol(card_location_type, span=2, offset=0),
-    #     dmc.GridCol(card_rental_count, span=2, offset=0),
-    #     dmc.GridCol(card_locker_count, span=2, offset=0),
-    # ]),  
-    # dmc.Space(h=30),
-    # dmc.Space(h=0),
-    # html.Hr(style=style_horizontal_thin_line),
     dmc.Grid(children = [
-            dmc.GridCol(dcc.Graph(id='scatter-map'), span=6, offset=0),  
-            # dmc.GridCol(dag.AgGrid(id='ag-grid'),span=5, offset=0),              
+            dmc.GridCol(dcc.Graph(id='scatter-map'), span=10, offset=1),          
         ]),
-    # dmc.Grid(children = [
-    #         dmc.GridCol(dcc.Graph(id='histo'), span=6, offset=0),            
-    #         dmc.GridCol(dcc.Graph(id='time-plot'), span=6, offset=0), 
-    #     ]),
 ])
 @app.callback(
     Output('scatter-map', 'figure'),
     Input('map-style', 'value'),
 )
 def callback(map_style):
-    print(f'{map_style = }')
-    # if selected_borough_list is None:
-    #     print('use first item on borough list')
-    #     selected_borough_list = [borough_list[0]]
-    # if not isinstance(selected_borough_list, list):
-    #     print('convert single selected borough to list')
-    #     selected_borough_list = [borough_list[0]]
     scatter_map=get_scatter_map(map_style)
     return scatter_map
 
