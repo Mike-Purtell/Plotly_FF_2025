@@ -32,7 +32,7 @@ else:
             SPLIT_NUMS = pl.col('Winning Numbers').str.split(' ')
         )
         .select(
-            pl.col('DATE', 'SPLIT_NUMS'),
+            pl.col('DATE'),
             LOWEST = pl.col('SPLIT_NUMS')
                 .list.get(0, null_on_oob=True)
                 .str.strip_chars().cast(pl.UInt8),
@@ -47,9 +47,6 @@ else:
                 .str.strip_chars().cast(pl.UInt8),
             HIGHEST = pl.col('SPLIT_NUMS')
                 .list.get(4, null_on_oob=True)
-                .str.strip_chars().cast(pl.UInt8),
-            POWERBALL = pl.col('SPLIT_NUMS')
-                .list.get(5, null_on_oob=True)
                 .str.strip_chars().cast(pl.UInt8),
         )
         .collect()
