@@ -1,0 +1,9 @@
+dash
+plotly
+polars
+pandas
+numpy
+dash_mantine_components
+dash_bootstrap_components
+dash-ag-grid
+gunicorn
