@@ -1,3 +1,5 @@
+
+import pycountry  # to get ISO-3 codes for each country in the dataset
 import polars as pl
 import polars.selectors as cs
 import numpy as np
@@ -7,6 +9,9 @@ import dash
 from dash import Dash, dcc, html, Input, Output
 import dash_mantine_components as dmc
 dash._dash_renderer._set_react_version('18.2.0')
+import pycountry
+
+
 
 '''
 Top-left (TL): pick one country, timeline showing total sales of selected country
@@ -29,23 +34,6 @@ style_h2 = {'text-align': 'center', 'font-size': '40px',
 template_list = ['ggplot2', 'seaborn', 'simple_white', 'plotly','plotly_white',
     'plotly_dark', 'presentation', 'xgridoff', 'ygridoff', 'gridon', 'none']
 
-dmc_text_red = {
-    'fontSize':'16px', 
-    'color':'red', 
-    'textAlign':'left',
-    'marginLeft':'100px'
-}
-# use dictionary dmc_text_red for and modify the color
-dmc_text_gray = dmc_text_red.copy()
-dmc_text_gray['color'] = 'gray'
-
-
-{'fontSize':'16px', 'color':'gray', 'textAlign':'left','marginLeft':'100px'},
-
-template_list = ['ggplot2', 'seaborn', 'simple_white', 'plotly','plotly_white',
-    'plotly_dark', 'presentation', 'xgridoff', 'ygridoff', 'gridon', 'none']
-
-
 #----- LOAD AND CLEAN THE DATASET ----------------------------------------------
 df = (
     pl.read_csv('Sales.csv')
@@ -56,28 +44,65 @@ df = (
             .str.to_date(format='%m/%d/%Y'),
         PRODUCT = pl.col('Product ID'),
         SALES = pl.col('Sales').cast(pl.Float32),
-        PROFIT = pl.col('Profit').cast(pl.Float32),
-        COUNTRY = pl.col('Country').cast(pl.Categorical),
+        COUNTRY = pl.col('Country'),# .cast(pl.Categorical),
         SEGMENT = pl.col('Segment').cast(pl.Categorical),
     )
-    .filter(pl.col('COUNTRY') != 'Bahrain') # Not enough data for Bahrain
+    .with_columns(
+        COUNTRY = pl.col('COUNTRY')
+                    .str.replace('Russia', 'Russian Federation')
+                    # .cast(pl.Categorical)
+    )
+    .filter(pl.col('COUNTRY') != 'Bahrain') # Not enough data to include Bahrain
 )
+
+#----- CREATE GLOBAL LISTS -----------------------------------------------------
+countries = (sorted(df.unique('COUNTRY').get_column('COUNTRY').to_list()))
+iso_codes = [pycountry.countries.lookup(c).alpha_3 for c in countries]
+segments = (sorted(df.unique('SEGMENT').get_column('SEGMENT').to_list()))
+print(f'Countries: {countries}' )
+
+#----- ADD ISO-3 CODES for each country in the dataset, then join with df ------
+
+df_iso = (   # join this with main df to get ISO-3 codes for each country
+    pl.DataFrame({
+        'COUNTRY': countries,
+        'ISO-3': iso_codes
+    })
+)
+print('df_iso')
+print(df_iso)
+
+df = (
+    df
+    .join(df_iso, on='COUNTRY', how='left')
+)
+print('df')
 print(df)
 
-#----- CREATE GLOBAL LISTS------------------------------------------------------
-countries = (sorted(df.unique('COUNTRY').get_column('COUNTRY').to_list()))
-segments = (sorted(df.unique('SEGMENT').get_column('SEGMENT').to_list()))
-print(f'{countries = }')
-print(f'{segments = }')
+#----- CREATE GLOBAL DICTIONARIES ----------------------------------------------
+''' no dictionaries used in this app'''
 
 #----- FUNCTIONS ---------------------------------------------------------------
+def set_timeline_axis(fig):
+    fig.update_xaxes(
+        dtick='M6',
+        tickformat='%b\n%Y',
+        ticklabelmode="period",
+        minor=dict(
+            ticks="outside",
+            tickwidth=2,
+            ticklen=30,
+            dtick="M12",
+        ),
+    )
+    return fig
+
 def get_tl_country(country, template):
     df_country_timeline = ( # group by dynamic to bin by month
         df
         .filter(pl.col('COUNTRY') == country)
         .group_by_dynamic('DATE', every='1mo').agg(pl.col('SALES').sum())
     )
-    print(df_country_timeline)
     mean_sales = df_country_timeline['SALES'].mean()
     df_country_timeline = (
         df_country_timeline
@@ -88,8 +113,6 @@ def get_tl_country(country, template):
             .otherwise(pl.lit('red'))
         )   
     )
-    print(df_country_timeline)
-    print(f'{mean_sales = }')
     x = df_country_timeline['DATE'].to_numpy()
     y1 = df_country_timeline['SALES'].to_numpy()
     y2 = df_country_timeline['MEAN_SALES'].to_numpy()
@@ -114,13 +137,13 @@ def get_tl_country(country, template):
         template=template,
         hovermode='x unified',
         showlegend=False,
-        title_text = f'{country} Sales Timeline',
+        title_text = f'Total Sales Timeline: <b>{country}</b>',
         margin=dict(l=50, r=100, t=50, b=20),
     )
 
     fill_color = df_country_timeline['FILL_COLOR'].to_list()
     for i in range(len(x) - 1):
-        fig.add_trace(go.Scatter(  # define trapezoidal area using 4 defined points
+        fig.add_trace(go.Scatter(  # define fill area using 4 defined points
             x=[x[i], x[i+1], x[i+1], x[i]],
             y=[y1[i], y1[i], y2[i+1], y2[i+1]],
             fill='toself',
@@ -138,18 +161,113 @@ def get_tl_country(country, template):
         xanchor='left', xshift=10, showarrow=False,
         font=dict(color='gray', size=12)
     )
-    fig.update_xaxes(
-        dtick='M6',
-        tickformat='%b\n%Y',
-        ticklabelmode="period",
-        # ticks="inside",
-        minor=dict(
-            ticks="outside",
-            tickwidth=2,
-            ticklen=30,
-            dtick="M12",
+    fig = set_timeline_axis(fig)  # set x-axis timeline 6-month tick spacing
+    return fig
 
-        ),
+def get_cum_tl_countries(countries, template):
+    df_countries = ( # group by dynamic to bin by month
+        df
+        .filter(pl.col('COUNTRY').is_in(countries))
+        .pivot(
+            on='COUNTRY',
+            index='DATE',
+            values='SALES',
+            aggregate_function='sum',
+        )
+        .group_by_dynamic('DATE', every='1mo').agg(pl.col(countries).sum())
+        .with_columns([   # replace raw data with cumulative sums
+            pl.col(c).cum_sum().alias(c) for c in countries
+        ])
+    )
+
+    fig = (
+        px.scatter(
+            df_countries,
+            x='DATE',
+            y=countries,
+            title='Cumulative Total Sales Timelines, Multiple Countries',
+        )
+    )
+
+    fig.update_layout(
+        template=template,
+        hovermode='x unified',
+        showlegend=True,
+        margin=dict(l=50, r=100, t=50, b=20),
+        xaxis = dict(title=''),
+        legend=dict(
+            title='<b>Country</b>', 
+            yanchor='top', y=1, xanchor='left', x=0.1
+            ),
+    )
+
+    fig.update_traces(mode='lines')
+    for trace in fig.data:
+        trace.line.width = 1       # adjust line thickness
+        trace.line.shape = 'hv'    # 'hv' for step-like appearance
+    
+    fig = set_timeline_axis(fig)  # set x-axis timeline 6-month tick spacing
+    return fig
+
+def get_tl_country_breakdown(country, template):
+    df_country_groupby = ( # group by dynamic to bin by month
+        df
+        .filter(pl.col('COUNTRY') == country)
+        .pivot(
+            on='SEGMENT',
+            index='DATE',
+            values='SALES',
+            aggregate_function='sum',
+        )
+        .sort('DATE')
+        .group_by_dynamic('DATE', every='1mo').agg(pl.col(segments).sum())
+         .with_columns([   # replace raw data with cumulative sums
+            pl.col(c).cum_sum().alias(c) for c in segments
+        ])
+    )
+
+    fig = px.scatter(
+        df_country_groupby,
+        x='DATE',
+        y=segments,
+        title=f'Cumulative Sales by Market Segment: <b>{country}</b>',
+        opacity=0.7,
+        template=template,
+    )       
+
+    fig.update_layout(
+        template=template,
+        hovermode='x unified',
+        showlegend=True,
+        margin=dict(l=50, r=100, t=50, b=20),
+        xaxis = dict(title=''),
+        legend=dict(
+            title='<b>Market Segment</b>', 
+            yanchor='top', y=1, xanchor='left', x=0.1
+        )
+    )
+
+    fig.update_traces(mode='lines')
+    for trace in fig.data:
+        trace.line.width = 1      # adjust line thickness
+        trace.line.shape = 'hv'    # 'hv' for step-like appearance
+    fig = set_timeline_axis(fig)  # set x-axis timeline 6-month tick spacing
+    return fig
+
+def get_choropleth(countries, template):
+    df_choro = (
+        df
+        .filter(pl.col('COUNTRY').is_in(countries))
+    )    
+    fig = px.choropleth(
+        df_choro,
+        locations='ISO-3', 
+        locationmode='ISO-3',
+        color="COUNTRY", # lifeExp is a column of gapminder
+        hover_name='SALES', # column to add to hover information
+        color_continuous_scale=px.colors.sequential.Plasma,
+        template=template,
+        title='World map with selected Countries',
     )
     return fig
 
@@ -175,6 +293,7 @@ dmc_select_countries = (
         searchable=False,  # Enables search functionality
         clearable=True,    # Allows clearing the selection
         size='sm',
+        hidePickedOptions=True
     ),
 )
 
@@ -189,7 +308,6 @@ dmc_select_template = (
         size='sm',
     ),
 )
-
 
 #----- DASH APPLICATION --------------------------------------------------------
 app = Dash()
@@ -208,26 +326,33 @@ app.layout =  dmc.MantineProvider([
     dmc.Space(h=10),
     dmc.Grid(children = [
         dmc.GridCol(dcc.Graph(id='tl_country'), span=5, offset=1),  
-        dmc.GridCol(dcc.Graph(id='tl_countries'), span=5, offset=1), 
+        dmc.GridCol(dcc.Graph(id='tl_cum_countries'), span=5, offset=1), 
     ]),
     dmc.Grid(children = [
         dmc.GridCol(dcc.Graph(id='tl_groupby'), span=5, offset=1), 
-        dmc.GridCol(dcc.Graph(id='choro'), span=5, offset=1),           
+        dmc.GridCol(dcc.Graph(id='choropleth'), span=5, offset=1),           
     ]),
 ])
 @app.callback(
     Output('tl_country', 'figure'),
+    Output('tl_cum_countries', 'figure'),
+    Output('tl_groupby', 'figure'),
+    Output('choropleth', 'figure'),
     Input('pick-country', 'value'),
     Input('pick-countries', 'value'),
     Input('template', 'value')
 )
 def callback(country, countries, template):
+    print(f'{country = }')
+    print(f'{countries = }')
 
     if not isinstance(countries, list):  # if value is not a list, make it one
         countries = [countries]  
     tl_country  = get_tl_country(country, template)
-    # histogram = get_histogram(df, pick, template)
-    # line_plot = get_line_plot(df, pick, template, aggregation)
-    return tl_country
+    cum_tl_countries = get_cum_tl_countries(countries, template)
+    tl_country_breakdown = get_tl_country_breakdown(country, template)
+    choropleth = get_choropleth(countries, template)
+
+    return tl_country, cum_tl_countries,tl_country_breakdown, choropleth
 if __name__ == '__main__':
     app.run(debug=True)
