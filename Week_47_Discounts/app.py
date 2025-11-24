@@ -1,19 +1,24 @@
 
 import pycountry  # to get ISO-3 codes for each country in the dataset
 import polars as pl
-import polars.selectors as cs
-import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import dash
 from dash import Dash, dcc, html, Input, Output
 import dash_mantine_components as dmc
 dash._dash_renderer._set_react_version('18.2.0')
-import pycountry
-
-
 
 '''
+next steps:
+    1) sanity check that sales total in the upper right match the sum of market
+         segments in the bottom left - DONE
+    2) improve hover info by customization
+    3 use a color dictionary by country to force consistency and asthetics
+    4 add dollar sign to y-tick labels
+    5 add selectors to choose alternate data to sales - add profit and discount.
+    5 publish app to plotly cloud
+    6 publish app link with description, source code and sreenshots to plotly community
+
 Top-left (TL): pick one country, timeline showing total sales of selected country
           include horizontal bar to show mean values
           color green above mean, red below mean
@@ -30,10 +35,36 @@ style_horizontal_thick_line = {'border': 'none', 'height': '4px',
 
 style_h2 = {'text-align': 'center', 'font-size': '40px', 
             'fontFamily': 'Arial','font-weight': 'bold', 'color': 'gray'}
+style_h3 = {'text-align': 'center', 'font-size': '16px', 
+            'fontFamily': 'Arial','font-weight': 'bold', 'color': 'gray'}
 
 template_list = ['ggplot2', 'seaborn', 'simple_white', 'plotly','plotly_white',
     'plotly_dark', 'presentation', 'xgridoff', 'ygridoff', 'gridon', 'none']
 
+choro_projections = sorted(['airy', 'aitoff', 'albers', 'august',
+    'azimuthal equal area', 'azimuthal equidistant', 'baker',
+    'bertin1953', 'boggs', 'bonne', 'bottomley', 'bromley',
+    'collignon', 'conic conformal', 'conic equal area', 'conicequidistant', 
+    'craig', 'craster', 'cylindrical equal area', 'cylindrical stereographic', 
+    'eckert1', 'eckert2', 'eckert3', 'eckert4', 'eckert5', 'eckert6', 'eisenlohr',
+    'equal earth', 'equirectangular', 'fahey', 'foucaut', 'foucaut sinusoidal', 
+    'ginzburg4', 'ginzburg5', 'ginzburg6', 'ginzburg8', 'ginzburg9', 'gnomonic',
+    'gringorten', 'gringorten quincuncial', 'guyou', 'hammer', 'hill', 
+    'homolosine', 'hufnagel', 'hyperelliptical', 'kavrayskiy7', 'lagrange', 
+    'larrivee', 'laskowski', 'loximuthal', 'mercator', 'miller', 'mollweide', 
+    'mt flatpolar parabolic', 'mt flat polar quartic', 'mt flat polar sinusoidal', 
+    'natural earth', 'natural earth1', 'naturalearth2', 'nell hammer', 
+    'nicolosi', 'orthographic','patterson', 'peirce quincuncial', 'polyconic',
+    'rectangular polyconic', 'robinson', 'satellite', 'sinumollweide', 
+    'sinusoidal', 'stereographic', 'times', 'transverse mercator', 
+    'van der grinten', 'van dergrinten2', 'van der grinten3', 'van der grinten4',
+    'wagner4', 'wagner6', 'wiechel', 'winkel tripel','winkel3'
+])
+
+attribution = (
+    'Data source: ' + 
+    '[Workout Wednesday](https://workout-wednesday.com/pbi-2025-w43/)'
+)
 #----- LOAD AND CLEAN THE DATASET ----------------------------------------------
 df = (
     pl.read_csv('Sales.csv')
@@ -42,15 +73,13 @@ df = (
             .str.split(' ')
             .list.first()
             .str.to_date(format='%m/%d/%Y'),
-        PRODUCT = pl.col('Product ID'),
         SALES = pl.col('Sales').cast(pl.Float32),
-        COUNTRY = pl.col('Country'),# .cast(pl.Categorical),
-        SEGMENT = pl.col('Segment').cast(pl.Categorical),
+        COUNTRY = pl.col('Country'),
+        SEGMENT = pl.col('Segment'), # .cast(pl.Categorical),
     )
     .with_columns(
         COUNTRY = pl.col('COUNTRY')
                     .str.replace('Russia', 'Russian Federation')
-                    # .cast(pl.Categorical)
     )
     .filter(pl.col('COUNTRY') != 'Bahrain') # Not enough data to include Bahrain
 )
@@ -59,29 +88,20 @@ df = (
 countries = (sorted(df.unique('COUNTRY').get_column('COUNTRY').to_list()))
 iso_codes = [pycountry.countries.lookup(c).alpha_3 for c in countries]
 segments = (sorted(df.unique('SEGMENT').get_column('SEGMENT').to_list()))
-print(f'Countries: {countries}' )
 
-#----- ADD ISO-3 CODES for each country in the dataset, then join with df ------
-
+#----- Make Dataframe of ISO-3 CODES by country, then join with df -------------
 df_iso = (   # join this with main df to get ISO-3 codes for each country
     pl.DataFrame({
         'COUNTRY': countries,
         'ISO-3': iso_codes
     })
 )
-print('df_iso')
-print(df_iso)
 
 df = (
     df
     .join(df_iso, on='COUNTRY', how='left')
+     # .with_columns(COUNTRY = pl.col('COUNTRY').cast(pl.Categorical))
 )
-print('df')
-print(df)
-
-#----- CREATE GLOBAL DICTIONARIES ----------------------------------------------
-''' no dictionaries used in this app'''
-
 #----- FUNCTIONS ---------------------------------------------------------------
 def set_timeline_axis(fig):
     fig.update_xaxes(
@@ -161,6 +181,7 @@ def get_tl_country(country, template):
         xanchor='left', xshift=10, showarrow=False,
         font=dict(color='gray', size=12)
     )
+    fig = set_scatter_traces(fig)  # takes care of hover, line size, line shape
     fig = set_timeline_axis(fig)  # set x-axis timeline 6-month tick spacing
     return fig
 
@@ -200,12 +221,7 @@ def get_cum_tl_countries(countries, template):
             yanchor='top', y=1, xanchor='left', x=0.1
             ),
     )
-
-    fig.update_traces(mode='lines')
-    for trace in fig.data:
-        trace.line.width = 1       # adjust line thickness
-        trace.line.shape = 'hv'    # 'hv' for step-like appearance
-    
+    fig = set_scatter_traces(fig)  # takes care of hover, line size, line shape
     fig = set_timeline_axis(fig)  # set x-axis timeline 6-month tick spacing
     return fig
 
@@ -246,28 +262,57 @@ def get_tl_country_breakdown(country, template):
             yanchor='top', y=1, xanchor='left', x=0.1
         )
     )
-
-    fig.update_traces(mode='lines')
-    for trace in fig.data:
-        trace.line.width = 1      # adjust line thickness
-        trace.line.shape = 'hv'    # 'hv' for step-like appearance
+    fig = set_scatter_traces(fig)  # takes care of hover, line size, line shape
     fig = set_timeline_axis(fig)  # set x-axis timeline 6-month tick spacing
     return fig
 
-def get_choropleth(countries, template):
+def get_choropleth(countries, template, projection):
     df_choro = (
         df
         .filter(pl.col('COUNTRY').is_in(countries))
-    )    
+        .with_columns(
+            SALES = pl.col('SALES').sum().over('COUNTRY')
+        )
+        .unique(['SALES', 'COUNTRY'])
+    )
+
     fig = px.choropleth(
         df_choro,
         locations='ISO-3', 
         locationmode='ISO-3',
-        color="COUNTRY", # lifeExp is a column of gapminder
         hover_name='SALES', # column to add to hover information
-        color_continuous_scale=px.colors.sequential.Plasma,
         template=template,
-        title='World map with selected Countries',
+        title='World map of selected countries',
+        subtitle = f'{projection} projection',
+        projection=projection,
+        custom_data=['COUNTRY', 'SALES']
+    )
+    fig.update_layout(
+        showlegend=False,
+        margin=dict(l=50, r=100, t=50, b=20),
+    )
+    fig.update_traces(  # for choropleth, setup hover to only show country
+        hovertemplate=(
+                "%{customdata[0]}<br>"
+                "SALES: US$ %{customdata[1]:,.0f}<br>"
+                "<extra></extra>"
+            )
+        )
+    return fig
+
+def set_scatter_traces(fig):
+    fig.update_traces(mode='lines')
+    for trace in fig.data:
+        trace.line.width = 1      # adjust line thickness
+        trace.line.shape = 'hv'    # 'hv' for step-like appearance
+        fig.for_each_trace(
+        lambda t: t.update(
+            hovertemplate=(
+                f"<b>{t.name}</b><br>"
+                'US$ %{y:,.0f}'
+                "<extra></extra>"      # removes the trace name footer
+            )
+        )
     )
     return fig
 
@@ -277,7 +322,7 @@ dmc_select_country = (
         label='Pick one country',
         id='pick-country',
         data= countries,
-        value=countries[7], # default is first country, alphabetic
+        value='Canada',     # default is arbitrary
         searchable=False,   # Enables search functionality
         clearable=True,     # Allows clearing the selection
         size='sm',
@@ -286,12 +331,13 @@ dmc_select_country = (
 
 dmc_select_countries = (
     dmc.MultiSelect(
-        label='Pick two or more countries',
+        label='Pick one or more countries',
+        placeholder='Pick one or more countries',
         id='pick-countries',
         data= countries,
-        value=[countries[0], countries[1]], # default is first country, alphabetic
-        searchable=False,  # Enables search functionality
-        clearable=True,    # Allows clearing the selection
+        value=[countries[0], countries[1]], # default countries arbitrary
+        # searchable=True,    # Enables search functionality
+        clearable=False,    # Allows clearing the selection
         size='sm',
         hidePickedOptions=True
     ),
@@ -308,29 +354,43 @@ dmc_select_template = (
         size='sm',
     ),
 )
-
+dmc_select_projection = (
+    dmc.Select(
+        label='Pick one projection for the choropleth map',
+        id='choro_projection',
+        data= choro_projections,
+        value='hufnagel',               # arbitrary choice
+        searchable=False,               # Enables search functionality
+        clearable=True,                 # Allows clearing the selection
+        size='sm',
+    ),
+)
 #----- DASH APPLICATION --------------------------------------------------------
 app = Dash()
 server = app.server
 app.layout =  dmc.MantineProvider([
     html.Hr(style=style_horizontal_thick_line),
-    dmc.Text('Sales data by Country', ta='center', style=style_h2),
+    dmc.Text('International Sales', ta='center', style=style_h2),
+    dmc.Text(attribution, ta='center', style=style_h3),
     html.Hr(style=style_horizontal_thick_line), 
         dmc.Grid(children = [
-        dmc.GridCol(dmc_select_template, span=3, offset = 1),
+        dmc.GridCol(dmc_select_template, span=2, offset = 1),
     ]),  
     dmc.Grid(children = [
-        dmc.GridCol(dmc_select_country, span=3, offset = 1),
+        dmc.GridCol(dmc_select_country, span=2, offset = 1),
         dmc.GridCol(dmc_select_countries, span=3, offset = 4),
     ]),  
     dmc.Space(h=10),
     dmc.Grid(children = [
-        dmc.GridCol(dcc.Graph(id='tl_country'), span=5, offset=1),  
-        dmc.GridCol(dcc.Graph(id='tl_cum_countries'), span=5, offset=1), 
+        dmc.GridCol(dcc.Graph(id='tl_country'), span=6, offset=0),  
+        dmc.GridCol(dcc.Graph(id='tl_cum_countries'), span=6, offset=0), 
     ]),
     dmc.Grid(children = [
-        dmc.GridCol(dcc.Graph(id='tl_groupby'), span=5, offset=1), 
-        dmc.GridCol(dcc.Graph(id='choropleth'), span=5, offset=1),           
+        dmc.GridCol(dmc_select_projection, span=3, offset = 7),
+    ]), 
+    dmc.Grid(children = [
+        dmc.GridCol(dcc.Graph(id='tl_groupby'), span=6, offset=0), 
+        dmc.GridCol(dcc.Graph(id='choropleth'), span=6, offset=0),           
     ]),
 ])
 @app.callback(
@@ -340,18 +400,16 @@ app.layout =  dmc.MantineProvider([
     Output('choropleth', 'figure'),
     Input('pick-country', 'value'),
     Input('pick-countries', 'value'),
-    Input('template', 'value')
+    Input('template', 'value'),
+    Input('choro_projection', 'value')
 )
-def callback(country, countries, template):
-    print(f'{country = }')
-    print(f'{countries = }')
-
+def callback(country, countries, template, choro_projection):
     if not isinstance(countries, list):  # if value is not a list, make it one
         countries = [countries]  
     tl_country  = get_tl_country(country, template)
     cum_tl_countries = get_cum_tl_countries(countries, template)
     tl_country_breakdown = get_tl_country_breakdown(country, template)
-    choropleth = get_choropleth(countries, template)
+    choropleth = get_choropleth(countries, template, choro_projection)
 
     return tl_country, cum_tl_countries,tl_country_breakdown, choropleth
 if __name__ == '__main__':
