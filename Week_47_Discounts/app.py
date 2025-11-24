@@ -10,11 +10,7 @@ dash._dash_renderer._set_react_version('18.2.0')
 
 '''
 next steps:
-    1) sanity check that sales total in the upper right match the sum of market
-         segments in the bottom left - DONE
-    2) improve hover info by customization
     3 use a color dictionary by country to force consistency and asthetics
-    4 add dollar sign to y-tick labels
     5 add selectors to choose alternate data to sales - add profit and discount.
     5 publish app to plotly cloud
     6 publish app link with description, source code and sreenshots to plotly community
@@ -75,7 +71,7 @@ df = (
             .str.to_date(format='%m/%d/%Y'),
         SALES = pl.col('Sales').cast(pl.Float32),
         COUNTRY = pl.col('Country'),
-        SEGMENT = pl.col('Segment'), # .cast(pl.Categorical),
+        SEGMENT = pl.col('Segment'),
     )
     .with_columns(
         COUNTRY = pl.col('COUNTRY')
@@ -89,6 +85,12 @@ countries = (sorted(df.unique('COUNTRY').get_column('COUNTRY').to_list()))
 iso_codes = [pycountry.countries.lookup(c).alpha_3 for c in countries]
 segments = (sorted(df.unique('SEGMENT').get_column('SEGMENT').to_list()))
 
+dict_country_color = dict(
+    zip(
+        countries, [px.colors.qualitative.Alphabet[i] for i in range(len(countries)) ]
+    )
+)
+
 #----- Make Dataframe of ISO-3 CODES by country, then join with df -------------
 df_iso = (   # join this with main df to get ISO-3 codes for each country
     pl.DataFrame({
@@ -100,7 +102,6 @@ df_iso = (   # join this with main df to get ISO-3 codes for each country
 df = (
     df
     .join(df_iso, on='COUNTRY', how='left')
-     # .with_columns(COUNTRY = pl.col('COUNTRY').cast(pl.Categorical))
 )
 #----- FUNCTIONS ---------------------------------------------------------------
 def set_timeline_axis(fig):
@@ -216,6 +217,7 @@ def get_cum_tl_countries(countries, template):
         showlegend=True,
         margin=dict(l=50, r=100, t=50, b=20),
         xaxis = dict(title=''),
+        yaxis = dict(title='Value [US $]'),
         legend=dict(
             title='<b>Country</b>', 
             yanchor='top', y=1, xanchor='left', x=0.1
@@ -256,7 +258,8 @@ def get_tl_country_breakdown(country, template):
         hovermode='x unified',
         showlegend=True,
         margin=dict(l=50, r=100, t=50, b=20),
-        xaxis = dict(title=''),
+        xaxis = dict(title=''),         
+        yaxis = dict(title='Value [US $]'),
         legend=dict(
             title='<b>Market Segment</b>', 
             yanchor='top', y=1, xanchor='left', x=0.1
@@ -274,6 +277,7 @@ def get_choropleth(countries, template, projection):
             SALES = pl.col('SALES').sum().over('COUNTRY')
         )
         .unique(['SALES', 'COUNTRY'])
+        .sort(['COUNTRY'])
     )
 
     fig = px.choropleth(
@@ -285,7 +289,9 @@ def get_choropleth(countries, template, projection):
         title='World map of selected countries',
         subtitle = f'{projection} projection',
         projection=projection,
-        custom_data=['COUNTRY', 'SALES']
+        custom_data=['COUNTRY', 'SALES'],
+        color='COUNTRY',
+        color_discrete_map=dict_country_color
     )
     fig.update_layout(
         showlegend=False,
@@ -336,7 +342,6 @@ dmc_select_countries = (
         id='pick-countries',
         data= countries,
         value=[countries[0], countries[1]], # default countries arbitrary
-        # searchable=True,    # Enables search functionality
         clearable=False,    # Allows clearing the selection
         size='sm',
         hidePickedOptions=True
