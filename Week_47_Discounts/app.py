@@ -10,10 +10,9 @@ dash._dash_renderer._set_react_version('18.2.0')
 
 '''
 next steps:
-    3 use a color dictionary by country to force consistency and asthetics
-    5 add selectors to choose alternate data to sales - add profit and discount.
-    5 publish app to plotly cloud
-    6 publish app link with description, source code and sreenshots to plotly community
+    1 Add 'ALL' as an option for multiselect in upper right
+    2 publish app to plotly cloud
+    3 publish app link with description, source code and sreenshots to plotly community
 
 Top-left (TL): pick one country, timeline showing total sales of selected country
           include horizontal bar to show mean values
@@ -90,7 +89,6 @@ dict_country_color = dict(
         countries, [px.colors.qualitative.Alphabet[i] for i in range(len(countries)) ]
     )
 )
-
 #----- Make Dataframe of ISO-3 CODES by country, then join with df -------------
 df_iso = (   # join this with main df to get ISO-3 codes for each country
     pl.DataFrame({
@@ -98,11 +96,11 @@ df_iso = (   # join this with main df to get ISO-3 codes for each country
         'ISO-3': iso_codes
     })
 )
-
 df = (
     df
     .join(df_iso, on='COUNTRY', how='left')
 )
+
 #----- FUNCTIONS ---------------------------------------------------------------
 def set_timeline_axis(fig):
     fig.update_xaxes(
@@ -173,7 +171,7 @@ def get_tl_country(country, template):
             mode='lines',
             hoverinfo='skip',
             showlegend=False,
-            opacity=0.2
+            opacity=0.5
         ))
     fig.add_annotation(
         x=1, xref='paper',
@@ -202,17 +200,19 @@ def get_cum_tl_countries(countries, template):
         ])
     )
 
-    fig = (
-        px.scatter(
-            df_countries,
-            x='DATE',
-            y=countries,
-            title='Cumulative Total Sales Timelines, Multiple Countries',
+    fig = go.Figure()    
+    for country in countries:
+        fig.add_trace(go.Scatter(
+            name=country,
+            x=df_countries['DATE'],
+            y=df_countries[country],
+            line=dict(color=dict_country_color[country]),
+            )
         )
-    )
 
     fig.update_layout(
         template=template,
+        title_text = 'Cumulative sales by <b>selected countries</b>', 
         hovermode='x unified',
         showlegend=True,
         margin=dict(l=50, r=100, t=50, b=20),
@@ -220,7 +220,7 @@ def get_cum_tl_countries(countries, template):
         yaxis = dict(title='Value [US $]'),
         legend=dict(
             title='<b>Country</b>', 
-            yanchor='top', y=1, xanchor='left', x=0.1
+            yanchor='top', y=1, xanchor='left', x=1.1
             ),
     )
     fig = set_scatter_traces(fig)  # takes care of hover, line size, line shape
@@ -249,7 +249,7 @@ def get_tl_country_breakdown(country, template):
         x='DATE',
         y=segments,
         title=f'Cumulative Sales by Market Segment: <b>{country}</b>',
-        opacity=0.7,
+        opacity=1.0,
         template=template,
     )       
 
@@ -309,7 +309,7 @@ def get_choropleth(countries, template, projection):
 def set_scatter_traces(fig):
     fig.update_traces(mode='lines')
     for trace in fig.data:
-        trace.line.width = 1      # adjust line thickness
+        trace.line.width = 2      # adjust line thickness
         trace.line.shape = 'hv'    # 'hv' for step-like appearance
         fig.for_each_trace(
         lambda t: t.update(
