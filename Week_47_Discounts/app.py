@@ -9,11 +9,6 @@ import dash_mantine_components as dmc
 dash._dash_renderer._set_react_version('18.2.0')
 
 '''
-next steps:
-    1 Add 'ALL' as an option for multiselect in upper right
-    2 publish app to plotly cloud
-    3 publish app link with description, source code and sreenshots to plotly community
-
 Top-left (TL): pick one country, timeline showing total sales of selected country
           include horizontal bar to show mean values
           color green above mean, red below mean
