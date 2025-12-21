@@ -52,8 +52,8 @@ else:
     df.write_parquet(root_file + '.parquet')
 
 # print(df.shape)
-# print(df.columns[:8])
-# print(df.columns[8:])
+print(df.columns[:8])
+print(df.columns[8:])
 
 # print(df.sample(10).glimpse())
 
@@ -76,6 +76,31 @@ style_h4 = {'text-align': 'center', 'font-size': '20px',
 contact_states = sorted(df.unique('CONTACT_STATE')['CONTACT_STATE'].to_list())
 primary_breeds = sorted(df.unique('BREED_PRIMARY')['BREED_PRIMARY'].to_list())
 print(primary_breeds[:25])
+# ----- SUMMARY METRICS FOR CARDS ------------------------------------------------
+# compute a few summary stats used in the UI cards
+total_animals = df.height if hasattr(df, 'height') else (df.shape[0] if hasattr(df, 'shape') else len(df))
+
+# most common age (safe fallback to 'Unknown')
+most_common_age = (
+    df['AGE']
+    .value_counts()
+    .sort('count', descending=True)
+    .item(0, 'AGE')
+)
+print(type(most_common_age))
+print(most_common_age)
+
+
+# helper to count truthy-ish values (handles a few common string encodings)
+_truthy_values = [True, 1, '1', 'True', 'true', 'Yes', 'yes', 'Y', 'y']
+fixed_count = df.filter(pl.col('FIXED').is_in(_truthy_values)).height
+fixed_pct = round(100 * fixed_count / total_animals, 1) if total_animals else 0.0
+
+shots_count = df.filter(pl.col('SHOTS_CURRENT').is_in(_truthy_values)).height
+shots_pct = round(100 * shots_count / total_animals, 1) if total_animals else 0.0
+
+org_count = df.select(pl.col('ORG_ID')).unique().height
+
 #----- DASH COMPONENTS------ ---------------------------------------------------
 dcc_select_contact_state = (
     dcc.Dropdown(
@@ -123,6 +148,44 @@ app.layout =  dmc.MantineProvider([
         'health status, and organizational performance across 58,147 records ' +
         'spanning 2003-2019.', ta='center', style=style_h3
     ),
+    # Summary cards row
+    dmc.Group([
+        dmc.Card(
+            dmc.Group([
+                dmc.Text(f"{total_animals:,}", size='xl', weight=700),
+                dmc.Text('Total Animals', size='sm', color='dim')
+            ], direction='column', position='center'),
+            shadow='sm', padding='md', radius='md', style={'minWidth': '160px', 'textAlign': 'center', 'margin': '6px'}
+        ),
+        dmc.Card(
+            dmc.Group([
+                dmc.Text(str(most_common_age), size='xl', weight=700),
+                dmc.Text('Most Common Age', size='sm', color='dim')
+            ], direction='column', position='center'),
+            shadow='sm', padding='md', radius='md', style={'minWidth': '160px', 'textAlign': 'center', 'margin': '6px'}
+        ),
+        dmc.Card(
+            dmc.Group([
+                dmc.Text(f"{fixed_pct}%", size='xl', weight=700),
+                dmc.Text('Fixed (%)', size='sm', color='dim')
+            ], direction='column', position='center'),
+            shadow='sm', padding='md', radius='md', style={'minWidth': '160px', 'textAlign': 'center', 'margin': '6px'}
+        ),
+        dmc.Card(
+            dmc.Group([
+                dmc.Text(f"{shots_pct}%", size='xl', weight=700),
+                dmc.Text('Shots Current (%)', size='sm', color='dim')
+            ], direction='column', position='center'),
+            shadow='sm', padding='md', radius='md', style={'minWidth': '160px', 'textAlign': 'center', 'margin': '6px'}
+        ),
+        dmc.Card(
+            dmc.Group([
+                dmc.Text(str(org_count), size='xl', weight=700),
+                dmc.Text('Organizations', size='sm', color='dim')
+            ], direction='column', position='center'),
+            shadow='sm', padding='md', radius='md', style={'minWidth': '160px', 'textAlign': 'center', 'margin': '6px'}
+        ),
+    ], position='center', spacing='md', style={'width': '100%', 'margin': '10px 0'}),
     html.Hr(style=style_horizontal_thick_line),
     dmc.Grid(children =  [
         dmc.GridCol(dmc.Text('Select a State(s)', ta='left', style=style_h4), 
