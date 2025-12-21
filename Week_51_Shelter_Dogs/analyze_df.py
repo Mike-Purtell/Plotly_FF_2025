@@ -1,5 +1,4 @@
 import polars as pl
-import polars.selectors as cs
 import os
 
 # Define Enum categories
@@ -8,7 +7,7 @@ enum_SEX = pl.Enum(['Male', 'Female', 'Unknown'])
 enum_SIZE = pl.Enum(['Small', 'Medium', 'Large','Extra Large'])
 
 root_file = 'allDogDescriptions'
-if os.path.exists(root_file + '.parquet'):
+if False: # os.path.exists(root_file + '.parquet'):
     print(f'{"*"*20} Reading {root_file}.parquet  {"*"*20}')
     df = pl.read_parquet(root_file + '.parquet')
     
@@ -28,29 +27,42 @@ else:
             HOUSE_TRAINED = pl.col('house_trained'),
             SHOTS_CURRENT = pl.col('shots_current'),
             NAME = pl.col('name').str.strip_chars().str.to_titlecase(),
-            DATE = pl.col('posted')   # regex for dates formatted as YYYY-MM-DD
+            DATE = pl.col('posted')
                 .str.extract(r'(\d{4}-\d{2}-\d{2})', group_index=1)
                 .str.to_date('%Y-%m-%d'),
-            TIME = pl.col('posted')   # regex for time formatted as HH:MM:SS
+            TIME = pl.col('posted')
                 .str.extract(r'(\d{2}:\d{2}:\d{2})', group_index=1)
                 .str.to_time('%H:%M:%S'),
             CONTACT_CITY = pl.col('contact_city'),
             CONTACT_STATE = pl.col('contact_state'),
             CONTACT_ZIP = pl.col('contact_zip').cast(pl.UInt32),
         )
-        .filter(  # regex to accept states comprised of 2 uppercase letters    
+        .filter(
             pl.col('CONTACT_STATE').str.contains(r'^[A-Z]{2}$')
         )
     )
     df.write_parquet(root_file + '.parquet')
 
-# Filter for valid 2-letter uppercase state codes
-df = df.filter(
-    pl.col('CONTACT_STATE').str.contains(r'^[A-Z]{2}$')
-)
+# # Comprehensive analysis
+print("\n" + "="*60)
+print("DATAFRAME ANALYSIS")
+print("="*60)
 
-print(df.shape)
-print(df.columns[:8])
-print(df.columns[8:])
+print(f"\nShape: {df.shape[0]} rows × {df.shape[1]} columns")
 
-print(df.sample(10).glimpse())
+print("\n--- Data Types ---")
+print(df.schema)
+
+print("\n--- Missing Values ---")
+print(df.null_count())
+
+print("\n--- Basic Statistics ---")
+print(df.describe())
+
+print("\n--- Categorical Value Counts ---")
+for col in ['AGE', 'SEX', 'SIZE']:
+    print(f"\n{col}:")
+    print(df[col].value_counts().sort('count', descending=True))
+
+print("\n--- Sample Data ---")
+print(df.head(3))
