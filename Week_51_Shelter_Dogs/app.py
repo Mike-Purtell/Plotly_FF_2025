@@ -1,19 +1,26 @@
 import polars as pl
 import polars.selectors as cs
 import os
+import plotly.express as px
+import plotly.graph_objects as go
+import dash
+from dash import Dash, dcc, html, Input, Output
+import dash_mantine_components as dmc
+import dash_ag_grid as dag
 
-# Define Enum categories
-enum_AGE = pl.Enum(['Adult', 'Baby', 'Senior', 'Young'])
-enum_SEX = pl.Enum(['Male', 'Female', 'Unknown'])
-enum_SIZE = pl.Enum(['Small', 'Medium', 'Large','Extra Large'])
 
+#----- LOAD AND CLEAN DATA -----------------------------------------------------
 root_file = 'allDogDescriptions'
+#  if False: # os.path.exists(root_file + '.parquet'):
 if os.path.exists(root_file + '.parquet'):
     print(f'{"*"*20} Reading {root_file}.parquet  {"*"*20}')
     df = pl.read_parquet(root_file + '.parquet')
-    
 else:
     print(f'{"*"*20} Reading {root_file}.csv  {"*"*20}')
+    # Define Enum categories
+    enum_AGE = pl.Enum(['Adult', 'Baby', 'Senior', 'Young'])
+    enum_SEX = pl.Enum(['Male', 'Female', 'Unknown'])
+    enum_SIZE = pl.Enum(['Small', 'Medium', 'Large','Extra Large'])
     df = (
         pl.read_csv(root_file + '.csv', ignore_errors=True)
         .select(
@@ -44,13 +51,128 @@ else:
     )
     df.write_parquet(root_file + '.parquet')
 
-# Filter for valid 2-letter uppercase state codes
-df = df.filter(
-    pl.col('CONTACT_STATE').str.contains(r'^[A-Z]{2}$')
+# print(df.shape)
+# print(df.columns[:8])
+# print(df.columns[8:])
+
+# print(df.sample(10).glimpse())
+
+#----- GLOBALS -----------------------------------------------------------------
+style_horizontal_thick_line = {'border': 'none', 'height': '4px', 
+    'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
+    'margin': '10px,', 'fontsize': 32}
+
+style_horizontal_thin_line = {'border': 'none', 'height': '2px', 
+    'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
+    'margin': '10px,', 'fontsize': 12}
+
+style_h2 = {'text-align': 'center', 'font-size': '40px', 
+            'fontFamily': 'Arial','font-weight': 'bold', 'color': 'gray'}
+style_h3 = {'text-align': 'center', 'font-size': '24px', 
+            'fontFamily': 'Arial','font-weight': 'normal', 'color': 'gray'}
+style_h4 = {'text-align': 'center', 'font-size': '20px', 
+            'fontFamily': 'Arial','font-weight': 'normal'}
+
+contact_states = sorted(df.unique('CONTACT_STATE')['CONTACT_STATE'].to_list())
+primary_breeds = sorted(df.unique('BREED_PRIMARY')['BREED_PRIMARY'].to_list())
+print(primary_breeds[:25])
+#----- DASH COMPONENTS------ ---------------------------------------------------
+dcc_select_contact_state = (
+    dcc.Dropdown(
+        placeholder='Select Contact State(s)', 
+        options=['ALL'] + contact_states, # menu choices  
+        value='ALL', # initial value              
+        clearable=True, searchable=True, multi=True, closeOnSelect=False,
+        id='id_select_contact_state'
+    )
+)
+dcc_select_animal_age = (
+    dcc.Dropdown(
+        placeholder='Select Animal Age(s)', 
+        options=['ALL', 'Baby', 'Young', 'Adult','Senior'], # menu choices  
+        value='ALL', # initial value              
+        clearable=True, searchable=True, multi=True, closeOnSelect=False,
+        id='id_select_animal_age'
+    )
 )
 
-print(df.shape)
-print(df.columns[:8])
-print(df.columns[8:])
+dcc_select_primary_breed = (
+    dcc.Dropdown(
+        placeholder='Select Primary Breed(s)', 
+        options=primary_breeds, # menu choices  
+        value=primary_breeds[0], # initial value              
+        clearable=True, searchable=True, multi=False, closeOnSelect=False,
+        id='id_select_primary_breed'
+    )
+)
 
-print(df.sample(10).glimpse())
+
+# #----- DASH APPLICATION STRUCTURE---------------------------------------------
+
+app = Dash()
+server = app.server
+app.layout =  dmc.MantineProvider([
+    html.Hr(style=style_horizontal_thick_line),
+    dmc.Text('Shelter Animal Analytics Dashboard', ta='center', style=style_h2),
+    # dmc.Text('Comprehensive analysis of shelter animal intake, demographics, health status, and organizational performance across 58,147 records spanning 2003-2019', ta='center', style=style_h3),
+    dmc.Text(
+        'Comprehensive analysis of shelter animal intake, demographics,',
+        ta='center', style=style_h3
+    ),
+    dmc.Text(
+        'health status, and organizational performance across 58,147 records ' +
+        'spanning 2003-2019.', ta='center', style=style_h3
+    ),
+    html.Hr(style=style_horizontal_thick_line),
+    dmc.Grid(children =  [
+        dmc.GridCol(dmc.Text('Select a State(s)', ta='left', style=style_h4), 
+        span=2, offset=1
+        ),
+        dmc.GridCol(dmc.Text('Select Animal Range', ta='left', style=style_h4), 
+        span=2, offset=1
+        ),
+        dmc.GridCol(dmc.Text('Select Primary Breed', ta='left', style=style_h4), 
+        span=2, offset=1
+        ),
+    ]),
+    
+    dmc.Grid(
+        children = [  
+            dmc.GridCol(dcc_select_contact_state, span=2, offset=1),
+            dmc.GridCol(dcc_select_animal_age, span=2, offset=1),
+            dmc.GridCol(dcc_select_primary_breed, span=2, offset=1)
+        ],
+    ),
+    html.Hr(style=style_horizontal_thin_line),
+    # dmc.Text('Comprehensive analysis of shelter animal intake, demographics, health status, and organizational performance across 58,147 records spanning 2003-2019', ta='center', style=style_h3),
+    # dmc.Text('Comprehensive analysis of shelter animal intake, demographics, health status, and organizational performance across 58,147 records spanning 2003-2019', ta='center', style=style_h3),
+    # dmc.Text('Comprehensive analysis of shelter animal intake, demographics, health status, and organizational performance across 58,147 records spanning 2003-2019', ta='center', style=style_h3),
+
+
+
+
+    # dmc.Grid(children = [
+    #     dmc.GridCol(dmc_select_map_style, span=2, offset = 1),
+    # ]),  
+    # dmc.Grid(children = [
+    #         dmc.GridCol(dcc.Graph(id='scatter-map'), span=10, offset=1),          
+    #     ]),
+])
+@app.callback(
+    # Output('scatter-map', 'figure'),
+    Input('id_select_contact_state', 'value'),
+    Input('id_select_animal_age', 'value'),
+    Input('id_select_primary_breed', 'value'),
+
+)
+def callback(selected_states, selected_animal_age, selected_primary_breed):
+    print(f'SELECTED STATES: {selected_states}')
+    print(f'ANIMAL AGE: {selected_animal_age}')
+    print(f'SELECTED PRIMARY BREED: {selected_primary_breed}')
+
+
+    # scatter_map=get_scatter_map(map_style)
+    return # scatter_map
+
+if __name__ == '__main__':
+    app.run(debug=True)
