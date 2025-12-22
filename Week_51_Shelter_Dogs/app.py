@@ -82,7 +82,8 @@ def get_timeline_plot(df_filtered):
         x='DATE', 
         y='Dog Count',
         title='Dog Postings Over Time',
-        labels={'DATE': 'Date', 'Dog Count': 'Number of Dogs Posted'},
+        subtitle='Grouped by Month',        
+        labels={'DATE': 'Month', 'Dog Count': 'Number of Dogs Posted'},
         markers=True
     )
     fig.update_layout(template='plotly_white', yaxis_type='log')
@@ -227,8 +228,6 @@ app.layout =  dmc.MantineProvider([
         dmc.GridCol(get_card('Organizations', ''),
             span=2, offset=0, ta='center',style=style_card),
     ]),
-    dmc.Space(h=30),
-    html.Hr(style=style_horizontal_thin_line),
     dmc.Space(h=30),
     dmc.Grid(children = [
         dmc.GridCol(dcc.Graph(id='timeline-plot'), span=5, offset=1),          
