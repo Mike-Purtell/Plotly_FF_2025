@@ -8,10 +8,100 @@ from dash import Dash, dcc, html, Input, Output
 import dash_mantine_components as dmc
 import dash_ag_grid as dag
 
+# TODO:
+#     Add a choropleth of dog counts by state,using df_filtered
+#     Add house trained dogs input trend
+#     Add Pareto top male dog names, top female dog names
+#     Add DAG table at bottom, unfilterd df. Put filters on each column.
+
+
+#----- GLOBALS -----------------------------------------------------------------
+root_file = 'allDogDescriptions'
+style_horizontal_thick_line = {'border': 'none', 'height': '4px', 
+    'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
+    'margin': '10px,', 'fontsize': 32}
+
+style_horizontal_thin_line = {'border': 'none', 'height': '2px', 
+    'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
+    'margin': '10px,', 'fontsize': 12}
+
+style_h2 = {'text-align': 'center', 'font-size': '40px', 
+            'fontFamily': 'Arial','font-weight': 'bold', 'color': 'gray'}
+style_h3 = {'text-align': 'center', 'font-size': '24px', 
+            'fontFamily': 'Arial','font-weight': 'normal', 'color': 'gray'}
+style_h4 = {'text-align': 'center', 'font-size': '20px', 
+            'fontFamily': 'Arial','font-weight': 'normal'}
+style_card = {'text-align': 'center', 'font-size': '20px', 
+            'fontFamily': 'Arial','font-weight': 'normal'}
+
+#-----  FUNCTIONS --------------------------------------------------------------
+def get_card(card_title, card_info):
+    card_title_id = card_title.lower().replace(' ', '-') + '-title'
+    card_info_id = card_title_id.replace('title', 'info')
+    if isinstance(card_info, int): 
+        card_info = f'{card_info:,}'
+    if card_info == '':
+        card_info = 'N/A'
+
+    card = dmc.Card(
+        dmc.Stack([
+            html.Div(style={
+                'height': '20px', 
+                'background': 'linear-gradient(to right, #007bff, #ff7b00)',
+                'width': '100%',
+                'marginBottom': '8px'
+            }),
+            dmc.Text(
+                card_title, fz=24, id=card_title_id,
+                # style={'display': 'block', 'margin-bottom': '8px'}
+            ),
+            # html.Br(),
+            dmc.Text(f"{card_info}", fz=16, id=card_info_id),
+        ],gap="xs"),
+        withBorder=True,
+        shadow='lg',
+        radius='md'
+    )
+    return card
+
+def get_timeline_plot(df_filtered):
+    # Create a timeline plot of dog postings over time
+    df_time = (
+        df_filtered
+        .sort('DATE')             # sort before dynamic_group_by is a must
+        .group_by_dynamic(
+            index_column='DATE',  # specify the datetime column
+            every='1mo',          # interval size
+            period='1mo',         # window size
+            closed='left'         # interval includes the left endpoint
+        )
+        .agg(pl.col('ID').count().alias('Dog Count'))   
+    )
+    fig = px.line(
+        df_time,
+        x='DATE', 
+        y='Dog Count',
+        title='Dog Postings Over Time',
+        labels={'DATE': 'Date', 'Dog Count': 'Number of Dogs Posted'},
+        markers=True
+    )
+    fig.update_layout(template='plotly_white', yaxis_type='log')
+    return fig
+
+def get_top_age_group(df):
+    if df.height:
+        return(
+            df.get_column('AGE')
+            .value_counts()
+            .sort('count', descending=True)
+            .item(0, 'AGE')
+        )
+    else:
+        return('N/A')
 
 #----- LOAD AND CLEAN DATA -----------------------------------------------------
 root_file = 'allDogDescriptions'
-#  if False: # os.path.exists(root_file + '.parquet'):
+# if False: # use this during development to force re-reading CSV
 if os.path.exists(root_file + '.parquet'):
     print(f'{"*"*20} Reading {root_file}.parquet  {"*"*20}')
     df = pl.read_parquet(root_file + '.parquet')
@@ -48,58 +138,19 @@ else:
         .filter(  # regex to accept states comprised of 2 uppercase letters    
             pl.col('CONTACT_STATE').str.contains(r'^[A-Z]{2}$')
         )
+        # merge all Cocker Spaniel variants into 'Cocker Spaniel'
+        .with_columns(BREED_PRIMARY = 
+            pl.when(pl.col('BREED_PRIMARY').str.contains('Cocker Spaniel'))
+            .then(pl.lit('Cocker Spaniel'))
+            .otherwise('BREED_PRIMARY')
+        )
     )
     df.write_parquet(root_file + '.parquet')
 
-# print(df.shape)
-print(df.columns[:8])
-print(df.columns[8:])
-
-# print(df.sample(10).glimpse())
-
-#----- GLOBALS -----------------------------------------------------------------
-style_horizontal_thick_line = {'border': 'none', 'height': '4px', 
-    'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
-    'margin': '10px,', 'fontsize': 32}
-
-style_horizontal_thin_line = {'border': 'none', 'height': '2px', 
-    'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
-    'margin': '10px,', 'fontsize': 12}
-
-style_h2 = {'text-align': 'center', 'font-size': '40px', 
-            'fontFamily': 'Arial','font-weight': 'bold', 'color': 'gray'}
-style_h3 = {'text-align': 'center', 'font-size': '24px', 
-            'fontFamily': 'Arial','font-weight': 'normal', 'color': 'gray'}
-style_h4 = {'text-align': 'center', 'font-size': '20px', 
-            'fontFamily': 'Arial','font-weight': 'normal'}
-
+#----- GLOBAL LISTS ------------------------------------------------------------
 contact_states = sorted(df.unique('CONTACT_STATE')['CONTACT_STATE'].to_list())
 primary_breeds = sorted(df.unique('BREED_PRIMARY')['BREED_PRIMARY'].to_list())
-print(primary_breeds[:25])
-# ----- SUMMARY METRICS FOR CARDS ------------------------------------------------
-# compute a few summary stats used in the UI cards
-total_animals = df.height if hasattr(df, 'height') else (df.shape[0] if hasattr(df, 'shape') else len(df))
-
-# most common age (safe fallback to 'Unknown')
-most_common_age = (
-    df['AGE']
-    .value_counts()
-    .sort('count', descending=True)
-    .item(0, 'AGE')
-)
-print(type(most_common_age))
-print(most_common_age)
-
-
-# helper to count truthy-ish values (handles a few common string encodings)
-_truthy_values = [True, 1, '1', 'True', 'true', 'Yes', 'yes', 'Y', 'y']
-fixed_count = df.filter(pl.col('FIXED').is_in(_truthy_values)).height
-fixed_pct = round(100 * fixed_count / total_animals, 1) if total_animals else 0.0
-
-shots_count = df.filter(pl.col('SHOTS_CURRENT').is_in(_truthy_values)).height
-shots_pct = round(100 * shots_count / total_animals, 1) if total_animals else 0.0
-
-org_count = df.select(pl.col('ORG_ID')).unique().height
+animal_age_list = ['Baby', 'Young', 'Adult','Senior']
 
 #----- DASH COMPONENTS------ ---------------------------------------------------
 dcc_select_contact_state = (
@@ -114,7 +165,7 @@ dcc_select_contact_state = (
 dcc_select_animal_age = (
     dcc.Dropdown(
         placeholder='Select Animal Age(s)', 
-        options=['ALL', 'Baby', 'Young', 'Adult','Senior'], # menu choices  
+        options=['ALL'] + animal_age_list, # menu choices  
         value='ALL', # initial value              
         clearable=True, searchable=True, multi=True, closeOnSelect=False,
         id='id_select_animal_age'
@@ -124,22 +175,19 @@ dcc_select_animal_age = (
 dcc_select_primary_breed = (
     dcc.Dropdown(
         placeholder='Select Primary Breed(s)', 
-        options=primary_breeds, # menu choices  
-        value=primary_breeds[0], # initial value              
+        options=['ALL'] + primary_breeds, # menu choices  
+        value='ALL', # initial value              
         clearable=True, searchable=True, multi=False, closeOnSelect=False,
         id='id_select_primary_breed'
     )
 )
-
-
-# #----- DASH APPLICATION STRUCTURE---------------------------------------------
+#----- DASH APPLICATION STRUCTURE ----------------------------------------------
 
 app = Dash()
 server = app.server
 app.layout =  dmc.MantineProvider([
     html.Hr(style=style_horizontal_thick_line),
-    dmc.Text('Shelter Animal Analytics Dashboard', ta='center', style=style_h2),
-    # dmc.Text('Comprehensive analysis of shelter animal intake, demographics, health status, and organizational performance across 58,147 records spanning 2003-2019', ta='center', style=style_h3),
+    dmc.Text('Furry Friday: Shelter Animal Analytics Dashboard', ta='center', style=style_h2),
     dmc.Text(
         'Comprehensive analysis of shelter animal intake, demographics,',
         ta='center', style=style_h3
@@ -148,57 +196,15 @@ app.layout =  dmc.MantineProvider([
         'health status, and organizational performance across 58,147 records ' +
         'spanning 2003-2019.', ta='center', style=style_h3
     ),
-    # Summary cards row
-    dmc.Group([
-        dmc.Card(
-            dmc.Group([
-                dmc.Text(f"{total_animals:,}", size='xl', weight=700),
-                dmc.Text('Total Animals', size='sm', color='dim')
-            ], direction='column', position='center'),
-            shadow='sm', padding='md', radius='md', style={'minWidth': '160px', 'textAlign': 'center', 'margin': '6px'}
-        ),
-        dmc.Card(
-            dmc.Group([
-                dmc.Text(str(most_common_age), size='xl', weight=700),
-                dmc.Text('Most Common Age', size='sm', color='dim')
-            ], direction='column', position='center'),
-            shadow='sm', padding='md', radius='md', style={'minWidth': '160px', 'textAlign': 'center', 'margin': '6px'}
-        ),
-        dmc.Card(
-            dmc.Group([
-                dmc.Text(f"{fixed_pct}%", size='xl', weight=700),
-                dmc.Text('Fixed (%)', size='sm', color='dim')
-            ], direction='column', position='center'),
-            shadow='sm', padding='md', radius='md', style={'minWidth': '160px', 'textAlign': 'center', 'margin': '6px'}
-        ),
-        dmc.Card(
-            dmc.Group([
-                dmc.Text(f"{shots_pct}%", size='xl', weight=700),
-                dmc.Text('Shots Current (%)', size='sm', color='dim')
-            ], direction='column', position='center'),
-            shadow='sm', padding='md', radius='md', style={'minWidth': '160px', 'textAlign': 'center', 'margin': '6px'}
-        ),
-        dmc.Card(
-            dmc.Group([
-                dmc.Text(str(org_count), size='xl', weight=700),
-                dmc.Text('Organizations', size='sm', color='dim')
-            ], direction='column', position='center'),
-            shadow='sm', padding='md', radius='md', style={'minWidth': '160px', 'textAlign': 'center', 'margin': '6px'}
-        ),
-    ], position='center', spacing='md', style={'width': '100%', 'margin': '10px 0'}),
+    dmc.Space(h=30),
     html.Hr(style=style_horizontal_thick_line),
+    dmc.Space(h=30),
     dmc.Grid(children =  [
-        dmc.GridCol(dmc.Text('Select a State(s)', ta='left', style=style_h4), 
-        span=2, offset=1
-        ),
-        dmc.GridCol(dmc.Text('Select Animal Range', ta='left', style=style_h4), 
-        span=2, offset=1
-        ),
-        dmc.GridCol(dmc.Text('Select Primary Breed', ta='left', style=style_h4), 
-        span=2, offset=1
-        ),
+        dmc.GridCol(dmc.Text('State(s)', ta='left'), span=2, offset=1),
+        dmc.GridCol(dmc.Text('Age Range', ta='left'), span=2, offset=1),
+        dmc.GridCol(dmc.Text('Primary Breed', ta='left'), span=2, offset=1),
     ]),
-    
+    dmc.Space(h=30),
     dmc.Grid(
         children = [  
             dmc.GridCol(dcc_select_contact_state, span=2, offset=1),
@@ -206,36 +212,85 @@ app.layout =  dmc.MantineProvider([
             dmc.GridCol(dcc_select_primary_breed, span=2, offset=1)
         ],
     ),
+    dmc.Space(h=30),
     html.Hr(style=style_horizontal_thin_line),
-    # dmc.Text('Comprehensive analysis of shelter animal intake, demographics, health status, and organizational performance across 58,147 records spanning 2003-2019', ta='center', style=style_h3),
-    # dmc.Text('Comprehensive analysis of shelter animal intake, demographics, health status, and organizational performance across 58,147 records spanning 2003-2019', ta='center', style=style_h3),
-    # dmc.Text('Comprehensive analysis of shelter animal intake, demographics, health status, and organizational performance across 58,147 records spanning 2003-2019', ta='center', style=style_h3),
-
-
-
-
-    # dmc.Grid(children = [
-    #     dmc.GridCol(dmc_select_map_style, span=2, offset = 1),
-    # ]),  
-    # dmc.Grid(children = [
-    #         dmc.GridCol(dcc.Graph(id='scatter-map'), span=10, offset=1),          
-    #     ]),
+    dmc.Space(h=30),
+    dmc.Grid(children = [      # Summary cards row
+        dmc.GridCol(get_card('Dog Count', ''), 
+            span=2, offset=1, ta='center', style=style_card),
+        dmc.GridCol(get_card('Top Age Group',''), 
+            span=2, offset=0, ta='center', style=style_card),
+        dmc.GridCol(get_card('Fixed', ''), 
+            span=2, offset=0, ta='center', style=style_card),
+        dmc.GridCol(get_card('Shots Current', ''), 
+            span=2, offset=0, ta='center', style=style_card),
+        dmc.GridCol(get_card('Organizations', ''),
+            span=2, offset=0, ta='center',style=style_card),
+    ]),
+    dmc.Space(h=30),
+    html.Hr(style=style_horizontal_thin_line),
+    dmc.Space(h=30),
+    dmc.Grid(children = [
+        dmc.GridCol(dcc.Graph(id='timeline-plot'), span=5, offset=1),          
+    ]),
+    dmc.Space(h=30),
+    html.Hr(style=style_horizontal_thin_line),
+    dmc.Space(h=30),
 ])
 @app.callback(
-    # Output('scatter-map', 'figure'),
+    Output('dog-count-info', 'children'),
+    Output('top-age-group-info', 'children'),
+    Output('fixed-info', 'children'),
+    Output('shots-current-info', 'children'),
+    Output('organizations-info', 'children'),
+    Output('timeline-plot', 'figure'),    
     Input('id_select_contact_state', 'value'),
     Input('id_select_animal_age', 'value'),
     Input('id_select_primary_breed', 'value'),
-
 )
 def callback(selected_states, selected_animal_age, selected_primary_breed):
     print(f'SELECTED STATES: {selected_states}')
     print(f'ANIMAL AGE: {selected_animal_age}')
     print(f'SELECTED PRIMARY BREED: {selected_primary_breed}')
-
-
-    # scatter_map=get_scatter_map(map_style)
-    return # scatter_map
+    if selected_states == 'ALL' or selected_states ==['ALL']:
+        selected_states = contact_states
+    print(f'{selected_animal_age = }')
+    if selected_animal_age == 'ALL':
+        selected_animal_age = animal_age_list # Only selected ALL
+    
+    if isinstance(selected_animal_age, list): 
+        if 'ALL' in selected_animal_age:
+            if len(selected_animal_age) > 1:  # list has ALL and others
+                selected_animal_age = selected_animal_age.remove('ALL')
+            else:
+                selected_animal_age = animal_age_list # Only selected ALL
+    print(f'{selected_animal_age = }')
+    print(f'{selected_primary_breed = }')
+    if selected_primary_breed == 'ALL':
+        selected_primary_breed = primary_breeds
+    if not isinstance(selected_primary_breed, list):
+        selected_primary_breed = [selected_primary_breed]
+    df_filtered = (
+        df
+        .filter(pl.col('CONTACT_STATE').is_in(selected_states))
+        .filter(pl.col('AGE').is_in(selected_animal_age))
+        .filter(pl.col('BREED_PRIMARY').is_in(selected_primary_breed))
+    )
+    dog_count = df_filtered.height
+    top_age_group = get_top_age_group(df_filtered)
+    fixed_count = df_filtered.filter(pl.col('FIXED')).height
+    fixed_pct = round(100 * fixed_count / dog_count, 1) if dog_count else 0.0
+    shots_count = df_filtered.filter(pl.col('SHOTS_CURRENT')).height
+    shots_pct = round(100 * shots_count / dog_count, 1) if dog_count else 0.0 
+    org_count = df_filtered.select(pl.col('ORG_ID')).unique().height
+    return (
+        f'{dog_count:,}',
+        top_age_group,
+        f'{fixed_count:,} ({fixed_pct}%)',
+        f'{shots_count:,} ({shots_pct}%)',
+        f'{org_count:,}',
+        get_timeline_plot(df_filtered)
+    )
 
 if __name__ == '__main__':
     app.run(debug=True)
