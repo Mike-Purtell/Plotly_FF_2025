@@ -46,16 +46,15 @@ def get_card(card_title, card_info):
     card = dmc.Card(
         dmc.Stack([
             html.Div(style={
-                'height': '20px', 
+                'height': '15px', 
                 'background': 'linear-gradient(to right, #007bff, #ff7b00)',
                 'width': '100%',
-                'marginBottom': '8px'
+                'marginBottom': '4px'
             }),
             dmc.Text(
                 card_title, fz=24, id=card_title_id,
                 # style={'display': 'block', 'margin-bottom': '8px'}
             ),
-            # html.Br(),
             dmc.Text(f"{card_info}", fz=16, id=card_info_id),
         ],gap="xs"),
         withBorder=True,
@@ -164,8 +163,8 @@ def get_choropleth(df_filtered):
 
 #----- LOAD AND CLEAN DATA -----------------------------------------------------
 root_file = 'allDogDescriptions'
-#   if False: # use this during development to force re-reading CSV
-if os.path.exists(root_file + '.parquet'):
+if False: # use this during development to force re-reading CSV
+#  if os.path.exists(root_file + '.parquet'):
     print(f'{"*"*20} Reading {root_file}.parquet  {"*"*20}')
     df = pl.read_parquet(root_file + '.parquet')
 else:
@@ -176,6 +175,8 @@ else:
     enum_SIZE = pl.Enum(['Small', 'Medium', 'Large','Extra Large'])
     df = (
         pl.read_csv(root_file + '.csv', ignore_errors=True)
+        # Only all dog names with letters a-z or whitespace
+        .filter(pl.col('name').str.contains(r'^[a-zA-Z\s]+$'))
         .select(
             NAME = pl.col('name').str.strip_chars().str.to_titlecase(),
             CONTACT_CITY = pl.col('contact_city'),
@@ -214,6 +215,7 @@ else:
 contact_states = sorted(df.unique('CONTACT_STATE')['CONTACT_STATE'].to_list())
 primary_breeds = sorted(df.unique('BREED_PRIMARY')['BREED_PRIMARY'].to_list())
 animal_age_list = ['Baby', 'Young', 'Adult','Senior']
+dog_name_list = sorted(df.unique('NAME')['NAME'].to_list())
 
 #----- DASH COMPONENTS------ ---------------------------------------------------
 dcc_select_contact_state = (
@@ -244,8 +246,17 @@ dcc_select_primary_breed = (
         id='id_select_primary_breed'
     )
 )
-# Dash AG Grid Table for full df
 
+dcc_select_dog_name = (
+    dcc.Dropdown(
+        placeholder='Select Dog Name', 
+        options=['ALL'] + dog_name_list, # menu choices  
+        value='ALL', # initial value              
+        clearable=True, searchable=True, multi=False, closeOnSelect=False,
+        id='id_select_dog_name'
+    )
+)
+# Dash AG Grid Table for full df
 def get_ag_grid_table(df):
     # Build columnDefs without floatingFilter
     column_defs = []
@@ -278,20 +289,20 @@ app.layout =  dmc.MantineProvider([
     html.Hr(style=style_horizontal_thick_line),
     dmc.Space(h=30),
     dmc.Grid(children =  [
-        dmc.GridCol(dmc.Text('State(s)', ta='left'), span=2, offset=1),
-        dmc.GridCol(dmc.Text('Age Range', ta='left'), span=2, offset=1),
-        dmc.GridCol(dmc.Text('Primary Breed', ta='left'), span=2, offset=1),
+        dmc.GridCol(dmc.Text('State(s)', ta='left'), span=2, offset=2),
+        dmc.GridCol(dmc.Text('Age Range', ta='left'), span=2, offset=0),
+        dmc.GridCol(dmc.Text('Primary Breed', ta='left'), span=2, offset=0),
+        dmc.GridCol(dmc.Text('Dog Name', ta='left'), span=2, offset=0),
     ]),
-    dmc.Space(h=30),
+    dmc.Space(h=10),
     dmc.Grid(
         children = [  
-            dmc.GridCol(dcc_select_contact_state, span=2, offset=1),
-            dmc.GridCol(dcc_select_animal_age, span=2, offset=1),
-            dmc.GridCol(dcc_select_primary_breed, span=2, offset=1)
+            dmc.GridCol(dcc_select_contact_state, span=2, offset=2),
+            dmc.GridCol(dcc_select_animal_age, span=2, offset=0),
+            dmc.GridCol(dcc_select_primary_breed, span=2, offset=0),
+            dmc.GridCol(dcc_select_dog_name, span=2, offset=0)
         ],
     ),
-    dmc.Space(h=30),
-    html.Hr(style=style_horizontal_thin_line),
     dmc.Space(h=30),
     dmc.Grid(children = [      # Summary cards row
         dmc.GridCol(get_card('Dog Count', ''), 
@@ -306,6 +317,11 @@ app.layout =  dmc.MantineProvider([
             span=2, offset=0, ta='center',style=style_card),
     ]),
     dmc.Space(h=30),
+    html.Hr(style=style_horizontal_thin_line),
+        dmc.Grid(children =  [
+        dmc.GridCol(dmc.Text('Visualizations filtered by the selections above.', 
+            ta='center'), span=10, offset=1),
+    ]),
     dmc.Grid(children = [
         dmc.GridCol(dcc.Graph(id='timeline-plot'), span=5, offset=1), 
         dmc.GridCol(dcc.Graph(id='choropleth-map'), span=5, offset=1),           
@@ -314,12 +330,15 @@ app.layout =  dmc.MantineProvider([
         dmc.GridCol(dcc.Graph(id='pareto-female'), span=5, offset=1),    
         dmc.GridCol(dcc.Graph(id='pareto-male'), span=5, offset=1),      
     ]),
+    html.Hr(style=style_horizontal_thin_line),
+        dmc.Grid(children =  [
+        dmc.GridCol(dmc.Text('Raw data table with floating filters', 
+            ta='center'), span=10, offset=1),
+    ]),
     dmc.Grid(children = [
         dmc.GridCol(get_ag_grid_table(df), span=10, offset=1),        
     ]),
-    dmc.Space(h=30),
-    html.Hr(style=style_horizontal_thin_line),
-    dmc.Space(h=30),
+
 ])
 @app.callback(
     Output('dog-count-info', 'children'),
@@ -334,13 +353,18 @@ app.layout =  dmc.MantineProvider([
     Input('id_select_contact_state', 'value'),
     Input('id_select_animal_age', 'value'),
     Input('id_select_primary_breed', 'value'),
+    Input('id_select_dog_name', 'value'),
 )
-def callback(selected_states, selected_animal_age, selected_primary_breed):
+def callback(selected_states, selected_animal_age, selected_primary_breed, selected_dog_name):
     print(f'SELECTED STATES: {selected_states}')
     print(f'ANIMAL AGE: {selected_animal_age}')
     print(f'SELECTED PRIMARY BREED: {selected_primary_breed}')
+    print(f'SELECTED DOG NAME: {selected_dog_name}')
     if selected_states == 'ALL' or selected_states ==['ALL']:
         selected_states = contact_states
+    print(f'{selected_states = }')
+    if selected_dog_name == 'ALL' or selected_dog_name ==['ALL']:
+        selected_dog_name = dog_name_list
     print(f'{selected_animal_age = }')
     if selected_animal_age == 'ALL':
         selected_animal_age = animal_age_list # Only selected ALL
@@ -351,18 +375,28 @@ def callback(selected_states, selected_animal_age, selected_primary_breed):
                 selected_animal_age = selected_animal_age.remove('ALL')
             else:
                 selected_animal_age = animal_age_list # Only selected ALL
+    
+    
+    if isinstance(selected_dog_name, list): 
+        selected_dog_name = [name for name in selected_dog_name if name != 'ALL']
+    else:
+        selected_dog_name = [selected_dog_name]
+
     print(f'{selected_animal_age = }')
     print(f'{selected_primary_breed = }')
+    # print(f'{selected_dog_name = }')
     if selected_primary_breed == 'ALL':
         selected_primary_breed = primary_breeds
     if not isinstance(selected_primary_breed, list):
         selected_primary_breed = [selected_primary_breed]
-    df_filtered = (
-        df
+    df_filtered = ( df
         .filter(pl.col('CONTACT_STATE').is_in(selected_states))
         .filter(pl.col('AGE').is_in(selected_animal_age))
         .filter(pl.col('BREED_PRIMARY').is_in(selected_primary_breed))
+        .filter(pl.col('NAME').is_in(selected_dog_name))
     )
+    print('df_filtered')
+    print(df_filtered)
     dog_count = df_filtered.height
     top_age_group = get_top_age_group(df_filtered)
     fixed_count = df_filtered.filter(pl.col('FIXED')).height
@@ -370,8 +404,6 @@ def callback(selected_states, selected_animal_age, selected_primary_breed):
     shots_count = df_filtered.filter(pl.col('SHOTS_CURRENT')).height
     shots_pct = round(100 * shots_count / dog_count, 1) if dog_count else 0.0 
     org_count = df_filtered.select(pl.col('ORG_ID')).unique().height
-    # female_pareto = get_dog_name_pareto(df_filtered, 'Female')
-    # male_pareto = get_dog_name_pareto(df_filtered, 'Male')
     return (
         f'{dog_count:,}',
         top_age_group,
