@@ -100,9 +100,71 @@ def get_top_age_group(df):
     else:
         return('N/A')
 
+def get_dog_name_pareto(df, gender):
+    print(f'{gender = }')
+    df_gender = (
+        df
+        .filter(pl.col('SEX') == gender)
+        .group_by('NAME')
+        .agg(NAME_COUNT = pl.col('ID').len())
+        .select('NAME', 'NAME_COUNT')
+        .sort('NAME_COUNT', descending=True)
+    )
+    if len(df_gender) > 10:
+        df_gender = df_gender.head(10)
+
+    print('df_gender')
+    print(gender)
+    print(df_gender)
+
+    fig = px.bar(
+        df_gender, # .sort('NAME_COUNT'),
+        y='NAME',
+        x='NAME_COUNT',
+        orientation='h',
+        template='simple_white',
+        title=f'Top 10 {gender} dog names',
+        text=df_gender['NAME_COUNT'],
+        labels={
+        'NAME': '',
+        }
+    )
+    fig.update_yaxes(autorange="reversed")
+    fig.update_xaxes(
+        showticklabels=False,
+        ticks='',
+        showline=False,
+        title_text=''
+    )
+
+    return fig
+
+def get_choropleth(df_filtered):
+    # Create a choropleth map of dog counts by state
+    df_state = (
+        df_filtered
+        .group_by('CONTACT_STATE')
+        .agg(pl.col('ID').count().alias('Dog Count'))
+    )
+    print(df_state)
+    fig = px.choropleth(
+        df_state,
+        locations='CONTACT_STATE',
+        locationmode='USA-states',
+        color='Dog Count',
+        scope='usa',
+        title='Dog Counts by State',
+        labels={'CONTACT_STATE': 'State', 'Dog Count': 'Number of Dogs'}
+    )
+    fig.update_layout(template='plotly_white')  
+    ## Return empty figure for now, until the groupby code is working
+    # fig=go.Figure()
+
+    return fig
+
 #----- LOAD AND CLEAN DATA -----------------------------------------------------
 root_file = 'allDogDescriptions'
-# if False: # use this during development to force re-reading CSV
+#   if False: # use this during development to force re-reading CSV
 if os.path.exists(root_file + '.parquet'):
     print(f'{"*"*20} Reading {root_file}.parquet  {"*"*20}')
     df = pl.read_parquet(root_file + '.parquet')
@@ -115,8 +177,10 @@ else:
     df = (
         pl.read_csv(root_file + '.csv', ignore_errors=True)
         .select(
-            ID = pl.col('id').cast(pl.UInt32),
-            ORG_ID = pl.col('org_id'),
+            NAME = pl.col('name').str.strip_chars().str.to_titlecase(),
+            CONTACT_CITY = pl.col('contact_city'),
+            CONTACT_STATE = pl.col('contact_state'),
+            CONTACT_ZIP = pl.col('contact_zip').cast(pl.UInt32),
             BREED_PRIMARY = pl.col('breed_primary'),
             BREED_MIXED = pl.col('breed_mixed'),
             AGE = pl.col('age').cast(enum_AGE),
@@ -125,16 +189,14 @@ else:
             FIXED = pl.col('fixed'),
             HOUSE_TRAINED = pl.col('house_trained'),
             SHOTS_CURRENT = pl.col('shots_current'),
-            NAME = pl.col('name').str.strip_chars().str.to_titlecase(),
             DATE = pl.col('posted')   # regex for dates formatted as YYYY-MM-DD
                 .str.extract(r'(\d{4}-\d{2}-\d{2})', group_index=1)
                 .str.to_date('%Y-%m-%d'),
             TIME = pl.col('posted')   # regex for time formatted as HH:MM:SS
                 .str.extract(r'(\d{2}:\d{2}:\d{2})', group_index=1)
                 .str.to_time('%H:%M:%S'),
-            CONTACT_CITY = pl.col('contact_city'),
-            CONTACT_STATE = pl.col('contact_state'),
-            CONTACT_ZIP = pl.col('contact_zip').cast(pl.UInt32),
+            ID = pl.col('id').cast(pl.UInt32),
+            ORG_ID = pl.col('org_id'),
         )
         .filter(  # regex to accept states comprised of 2 uppercase letters    
             pl.col('CONTACT_STATE').str.contains(r'^[A-Z]{2}$')
@@ -182,6 +244,21 @@ dcc_select_primary_breed = (
         id='id_select_primary_breed'
     )
 )
+# Dash AG Grid Table for full df
+
+def get_ag_grid_table(df):
+    # Build columnDefs without floatingFilter
+    column_defs = []
+    for col in df.columns:
+        col_def = {"headerName": col, "field": col, "floatingFilter": True}
+        column_defs.append(col_def)
+    return dag.AgGrid(
+        id="ag-table-full-df",
+        columnDefs=column_defs,
+        rowData=df.to_dicts(),
+        defaultColDef={"filter": True, "sortable": True, "resizable": True},
+        style={"height": "500px", "width": "100%"}
+    )
 #----- DASH APPLICATION STRUCTURE ----------------------------------------------
 
 app = Dash()
@@ -230,7 +307,15 @@ app.layout =  dmc.MantineProvider([
     ]),
     dmc.Space(h=30),
     dmc.Grid(children = [
-        dmc.GridCol(dcc.Graph(id='timeline-plot'), span=5, offset=1),          
+        dmc.GridCol(dcc.Graph(id='timeline-plot'), span=5, offset=1), 
+        dmc.GridCol(dcc.Graph(id='choropleth-map'), span=5, offset=1),           
+    ]),
+    dmc.Grid(children = [
+        dmc.GridCol(dcc.Graph(id='pareto-female'), span=5, offset=1),    
+        dmc.GridCol(dcc.Graph(id='pareto-male'), span=5, offset=1),      
+    ]),
+    dmc.Grid(children = [
+        dmc.GridCol(get_ag_grid_table(df), span=10, offset=1),        
     ]),
     dmc.Space(h=30),
     html.Hr(style=style_horizontal_thin_line),
@@ -242,7 +327,10 @@ app.layout =  dmc.MantineProvider([
     Output('fixed-info', 'children'),
     Output('shots-current-info', 'children'),
     Output('organizations-info', 'children'),
-    Output('timeline-plot', 'figure'),    
+    Output('timeline-plot', 'figure'), 
+    Output('choropleth-map', 'figure'),  
+    Output('pareto-female', 'figure'),  
+    Output('pareto-male', 'figure'),
     Input('id_select_contact_state', 'value'),
     Input('id_select_animal_age', 'value'),
     Input('id_select_primary_breed', 'value'),
@@ -282,13 +370,18 @@ def callback(selected_states, selected_animal_age, selected_primary_breed):
     shots_count = df_filtered.filter(pl.col('SHOTS_CURRENT')).height
     shots_pct = round(100 * shots_count / dog_count, 1) if dog_count else 0.0 
     org_count = df_filtered.select(pl.col('ORG_ID')).unique().height
+    # female_pareto = get_dog_name_pareto(df_filtered, 'Female')
+    # male_pareto = get_dog_name_pareto(df_filtered, 'Male')
     return (
         f'{dog_count:,}',
         top_age_group,
         f'{fixed_count:,} ({fixed_pct}%)',
         f'{shots_count:,} ({shots_pct}%)',
         f'{org_count:,}',
-        get_timeline_plot(df_filtered)
+        get_timeline_plot(df_filtered),
+        get_choropleth(df_filtered),
+        get_dog_name_pareto(df_filtered, 'Female'),
+        get_dog_name_pareto(df_filtered, 'Male')
     )
 
 if __name__ == '__main__':
