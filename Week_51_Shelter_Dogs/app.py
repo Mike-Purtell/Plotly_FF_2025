@@ -185,10 +185,8 @@ def get_choropleth(df_filtered):
 #----- LOAD AND CLEAN DATA -----------------------------------------------------
 root_file = 'allDogDescriptions'
 if os.path.exists(root_file + '.parquet'):
-    print(f'{"*"*20} Reading {root_file}.parquet  {"*"*20}')
     df = pl.read_parquet(root_file + '.parquet')
 else:
-    print(f'{"*"*20} Reading {root_file}.csv  {"*"*20}')
     # Define Enum categories
     enum_AGE = pl.Enum(['Adult', 'Baby', 'Senior', 'Young'])
     enum_SEX = pl.Enum(['Male', 'Female', 'Unknown'])
