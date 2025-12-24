@@ -21,33 +21,64 @@ style_h3 = {'text-align': 'center', 'font-size': '24px',
 style_card = {'text-align': 'center', 'font-size': '20px', 
             'fontFamily': 'Arial','font-weight': 'normal'}
 
+# Responsive grid span for stat cards
+dmc_card_span = {"base": 12, "sm": 6, "md": 2}
+dmc_card_span = {"base": 12, "sm": 6, "md": 2}
 #-----  FUNCTIONS --------------------------------------------------------------
-def get_card(card_title, card_info):
-    card_title_id = card_title.lower().replace(' ', '-') + '-title'
-    card_info_id = card_title_id.replace('title', 'info')
-    if isinstance(card_info, int): 
-        card_info = f'{card_info:,}'
-    if card_info == '':
-        card_info = 'N/A'
-    card = dmc.Card(
-        dmc.Stack([
-            html.Div(style={
-                'height': '15px', 
-                'background': 'linear-gradient(to right, #007bff, #ff7b00)',
-                'width': '100%',
-                'marginBottom': '4px'
-            }),
-            dmc.Text(
-                card_title, fz=24, id=card_title_id,
-                # style={'display': 'block', 'margin-bottom': '8px'}
-            ),
-            dmc.Text(f"{card_info}", fz=16, id=card_info_id),
-        ],gap="xs"),
-        withBorder=True,
-        shadow='lg',
-        radius='md'
+def stat_card(title, value, id_prefix=None):
+    '''Accessible, responsive stat card.
+    title: label shown at top-left
+    value: initial value string (can be empty, will show N/A)
+    id_prefix: sets the value text id as f'{id_prefix}-info' to match callbacks
+    '''
+    value_txt = (
+        f'{value:,}' if isinstance(value, (int, float)) 
+        else (value if value not in (None, '') else 'N/A')
     )
-    return card
+    value_id = f'{id_prefix}-info' if id_prefix else None
+
+    header = dmc.Group(
+        justify='space-between',
+        align='flex-start',
+        children=[
+            dmc.Text(title, size='xl', fw=600, c='dimmed'),
+        ]
+    )
+
+    # Right-side content stack (title + value)
+    content_stack = dmc.Stack([
+        header,
+        dmc.Space(h=4),
+        dmc.Text(
+            value_txt, 
+            id=value_id, 
+            size='xl', 
+            fw=700, 
+            style={'lineHeight': '1.1'}
+        ),
+    ], gap=0)
+
+    # Left vertical accent bar
+    accent_bar = html.Div(style={
+        'width': '6px',
+        'borderRadius': '4px',
+        'background': 'linear-gradient(to bottom, #007bff, #ff7b00)'
+    })
+
+    # Row layout with accent bar + content
+    row = html.Div([
+        accent_bar,
+        html.Div(content_stack, style={'flex': '1 1 auto'})
+    ], style={'display': 'flex', 'gap': '12px', 'alignItems': 'stretch'})
+
+    return dmc.Card(
+        withBorder=True,
+        shadow='sm',
+        radius='md',
+        padding='md',
+        **{'aria-label': f'{title} statistic'},
+        children=row
+    )
 
 def normalize_selection(selected_value, all_values_list):
     ''' Normalize dropdown/multiselect to handle ALL and ensure list type
@@ -261,7 +292,7 @@ dcc_select_primary_breed = (
 # Dash Core Dropdown for dog name selection
 dcc_select_dog_name = (
     dcc.Dropdown(
-        placeholder='Select up to 10 Dog Names', 
+        placeholder='Select Dog Names', 
         options=['ALL'] + dog_name_list, # menu choices  
         value='ALL', # initial value              
         clearable=True, searchable=True, multi=True, closeOnSelect=False,
@@ -317,17 +348,12 @@ app.layout =  dmc.MantineProvider([
         ],
     ),
     dmc.Space(h=30),
-    dmc.Grid(children = [      # Summary cards row
-        dmc.GridCol(get_card('Dog Count', ''), 
-            span=2, offset=1, ta='center', style=style_card),
-        dmc.GridCol(get_card('Top Age Group',''), 
-            span=2, offset=0, ta='center', style=style_card),
-        dmc.GridCol(get_card('Fixed', ''), 
-            span=2, offset=0, ta='center', style=style_card),
-        dmc.GridCol(get_card('Shots Current', ''), 
-            span=2, offset=0, ta='center', style=style_card),
-        dmc.GridCol(get_card('Organizations', ''),
-            span=2, offset=0, ta='center',style=style_card),
+    dmc.Grid(children = [      # Summary cards row (responsive spans)
+        dmc.GridCol(stat_card('Dog Count', '', id_prefix='dog-count'), span=dmc_card_span, offset=1),
+        dmc.GridCol(stat_card('Top Age Group', '', id_prefix='top-age-group'), span=dmc_card_span),
+        dmc.GridCol(stat_card('Fixed', '', id_prefix='fixed'), span=dmc_card_span),
+        dmc.GridCol(stat_card('Shots Current', '', id_prefix='shots-current'), span=dmc_card_span),
+        dmc.GridCol(stat_card('Organizations', '', id_prefix='organizations'), span=dmc_card_span),
     ]),
     dmc.Space(h=30),
     html.Hr(style=style_horizontal_thin_line),
