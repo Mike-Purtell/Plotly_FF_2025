@@ -1,19 +1,9 @@
 import polars as pl
-import polars.selectors as cs
 import os
 import plotly.express as px
-import plotly.graph_objects as go
-import dash
 from dash import Dash, dcc, html, Input, Output
 import dash_mantine_components as dmc
 import dash_ag_grid as dag
-
-# TODO:
-#     Add a choropleth of dog counts by state,using df_filtered
-#     Add house trained dogs input trend
-#     Add Pareto top male dog names, top female dog names
-#     Add DAG table at bottom, unfilterd df. Put filters on each column.
-
 
 #----- GLOBALS -----------------------------------------------------------------
 root_file = 'allDogDescriptions'
@@ -29,8 +19,6 @@ style_h2 = {'text-align': 'center', 'font-size': '40px',
             'fontFamily': 'Arial','font-weight': 'bold', 'color': 'gray'}
 style_h3 = {'text-align': 'center', 'font-size': '24px', 
             'fontFamily': 'Arial','font-weight': 'normal', 'color': 'gray'}
-style_h4 = {'text-align': 'center', 'font-size': '20px', 
-            'fontFamily': 'Arial','font-weight': 'normal'}
 style_card = {'text-align': 'center', 'font-size': '20px', 
             'fontFamily': 'Arial','font-weight': 'normal'}
 
@@ -62,6 +50,33 @@ def get_card(card_title, card_info):
         radius='md'
     )
     return card
+
+def normalize_selection(selected_value, all_values_list):
+    ''' Normalize dropdown/multiselect to handle ALL and ensure list type
+    Input Args:
+        selected_value: from dropdown/multiselect (can be string, list, or None)
+        all_values_list: list of all possible values
+    Returns:
+        A list of selected values with 'ALL' properly handled
+    '''
+    # Handle None or empty list
+    if selected_value is None or selected_value == []:
+        return all_values_list
+    
+    # Handle 'ALL' as a string or as the only member of a list
+    if selected_value == 'ALL' or selected_value == ['ALL']:
+        return all_values_list
+    
+    # Handle list with 'ALL' in it
+    if isinstance(selected_value, list):
+        if 'ALL' in selected_value:
+            # If list has ALL and other items, remove ALL
+            filtered = [s for s in selected_value if s != 'ALL']
+            return filtered if filtered else all_values_list
+        return selected_value
+    
+    # Handle single string value
+    return [selected_value]
 
 def get_timeline_plot(df_filtered):
     # Create a timeline plot of dog postings over time
@@ -100,7 +115,6 @@ def get_top_age_group(df):
         return('N/A')
 
 def get_dog_name_pareto(df, gender):
-    print(f'{gender = }')
     df_gender = (
         df
         .filter(pl.col('SEX') == gender)
@@ -111,10 +125,6 @@ def get_dog_name_pareto(df, gender):
     )
     if len(df_gender) > 10:
         df_gender = df_gender.head(10)
-
-    print('df_gender')
-    print(gender)
-    print(df_gender)
 
     fig = px.bar(
         df_gender, # .sort('NAME_COUNT'),
@@ -135,7 +145,6 @@ def get_dog_name_pareto(df, gender):
         showline=False,
         title_text=''
     )
-
     return fig
 
 def get_choropleth(df_filtered):
@@ -145,7 +154,6 @@ def get_choropleth(df_filtered):
         .group_by('CONTACT_STATE')
         .agg(pl.col('ID').count().alias('Dog Count'))
     )
-    print(df_state)
     fig = px.choropleth(
         df_state,
         locations='CONTACT_STATE',
@@ -156,15 +164,12 @@ def get_choropleth(df_filtered):
         labels={'CONTACT_STATE': 'State', 'Dog Count': 'Number of Dogs'}
     )
     fig.update_layout(template='plotly_white')  
-    ## Return empty figure for now, until the groupby code is working
-    # fig=go.Figure()
-
     return fig
 
 #----- LOAD AND CLEAN DATA -----------------------------------------------------
 root_file = 'allDogDescriptions'
-if False: # use this during development to force re-reading CSV
-#  if os.path.exists(root_file + '.parquet'):
+#  if False: # use this during development to force re-reading CSV
+if os.path.exists(root_file + '.parquet'):
     print(f'{"*"*20} Reading {root_file}.parquet  {"*"*20}')
     df = pl.read_parquet(root_file + '.parquet')
 else:
@@ -202,12 +207,6 @@ else:
         .filter(  # regex to accept states comprised of 2 uppercase letters    
             pl.col('CONTACT_STATE').str.contains(r'^[A-Z]{2}$')
         )
-        # merge all Cocker Spaniel variants into 'Cocker Spaniel'
-        .with_columns(BREED_PRIMARY = 
-            pl.when(pl.col('BREED_PRIMARY').str.contains('Cocker Spaniel'))
-            .then(pl.lit('Cocker Spaniel'))
-            .otherwise('BREED_PRIMARY')
-        )
     )
     df.write_parquet(root_file + '.parquet')
 
@@ -242,20 +241,22 @@ dcc_select_primary_breed = (
         placeholder='Select Primary Breed(s)', 
         options=['ALL'] + primary_breeds, # menu choices  
         value='ALL', # initial value              
-        clearable=True, searchable=True, multi=False, closeOnSelect=False,
+        clearable=True, searchable=True, multi=True, closeOnSelect=False,
         id='id_select_primary_breed'
     )
 )
 
+# Dash Core Dropdown for dog name selection
 dcc_select_dog_name = (
     dcc.Dropdown(
-        placeholder='Select Dog Name', 
+        placeholder='Select up to 10 Dog Names', 
         options=['ALL'] + dog_name_list, # menu choices  
         value='ALL', # initial value              
-        clearable=True, searchable=True, multi=False, closeOnSelect=False,
+        clearable=True, searchable=True, multi=True, closeOnSelect=False,
         id='id_select_dog_name'
     )
 )
+
 # Dash AG Grid Table for full df
 def get_ag_grid_table(df):
     # Build columnDefs without floatingFilter
@@ -300,7 +301,7 @@ app.layout =  dmc.MantineProvider([
             dmc.GridCol(dcc_select_contact_state, span=2, offset=2),
             dmc.GridCol(dcc_select_animal_age, span=2, offset=0),
             dmc.GridCol(dcc_select_primary_breed, span=2, offset=0),
-            dmc.GridCol(dcc_select_dog_name, span=2, offset=0)
+            dmc.GridCol(html.Div([dcc_select_dog_name,]),span=2, offset=0)
         ],
     ),
     dmc.Space(h=30),
@@ -353,50 +354,22 @@ app.layout =  dmc.MantineProvider([
     Input('id_select_contact_state', 'value'),
     Input('id_select_animal_age', 'value'),
     Input('id_select_primary_breed', 'value'),
-    Input('id_select_dog_name', 'value'),
-)
+    Input('id_select_dog_name', 'value')
+    )
 def callback(selected_states, selected_animal_age, selected_primary_breed, selected_dog_name):
-    print(f'SELECTED STATES: {selected_states}')
-    print(f'ANIMAL AGE: {selected_animal_age}')
-    print(f'SELECTED PRIMARY BREED: {selected_primary_breed}')
-    print(f'SELECTED DOG NAME: {selected_dog_name}')
-    if selected_states == 'ALL' or selected_states ==['ALL']:
-        selected_states = contact_states
-    print(f'{selected_states = }')
-    if selected_dog_name == 'ALL' or selected_dog_name ==['ALL']:
-        selected_dog_name = dog_name_list
-    print(f'{selected_animal_age = }')
-    if selected_animal_age == 'ALL':
-        selected_animal_age = animal_age_list # Only selected ALL
+    # Normalize all selections
+    selected_states = normalize_selection(selected_states, contact_states)
+    selected_animal_age = normalize_selection(selected_animal_age, animal_age_list)
+    selected_primary_breed = normalize_selection(selected_primary_breed, primary_breeds)
+    selected_dog_name = normalize_selection(selected_dog_name, dog_name_list)
     
-    if isinstance(selected_animal_age, list): 
-        if 'ALL' in selected_animal_age:
-            if len(selected_animal_age) > 1:  # list has ALL and others
-                selected_animal_age = selected_animal_age.remove('ALL')
-            else:
-                selected_animal_age = animal_age_list # Only selected ALL
-    
-    
-    if isinstance(selected_dog_name, list): 
-        selected_dog_name = [name for name in selected_dog_name if name != 'ALL']
-    else:
-        selected_dog_name = [selected_dog_name]
-
-    print(f'{selected_animal_age = }')
-    print(f'{selected_primary_breed = }')
-    # print(f'{selected_dog_name = }')
-    if selected_primary_breed == 'ALL':
-        selected_primary_breed = primary_breeds
-    if not isinstance(selected_primary_breed, list):
-        selected_primary_breed = [selected_primary_breed]
+    # Filter dataframe based on selections
     df_filtered = ( df
         .filter(pl.col('CONTACT_STATE').is_in(selected_states))
         .filter(pl.col('AGE').is_in(selected_animal_age))
         .filter(pl.col('BREED_PRIMARY').is_in(selected_primary_breed))
         .filter(pl.col('NAME').is_in(selected_dog_name))
     )
-    print('df_filtered')
-    print(df_filtered)
     dog_count = df_filtered.height
     top_age_group = get_top_age_group(df_filtered)
     fixed_count = df_filtered.filter(pl.col('FIXED')).height
