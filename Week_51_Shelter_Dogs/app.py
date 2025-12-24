@@ -53,16 +53,15 @@ def stat_card(title, value, id_prefix=None):
             value_txt, 
             id=value_id, 
             size='xl', 
-            fw=700, 
-            style={'lineHeight': '1.1'}
+            style={'lineHeight': '1.1', 'color': 'blue'}
         ),
     ], gap=0)
 
     # Left vertical accent bar
     accent_bar = html.Div(style={
-        'width': '6px',
+        'width': '15px',
         'borderRadius': '4px',
-        'background': 'linear-gradient(to bottom, #007bff, #ff7b00)'
+        'background': 'repeating-linear-gradient(to bottom, #666666, #999999, #666666)'
     })
 
     # Row layout with accent bar + content
@@ -181,9 +180,7 @@ def get_dog_name_pareto(df, gender):
         template='simple_white',
         title=f'Top 10 {gender} dog names',
         text=df_gender['NAME_COUNT'],
-        labels={
-        'NAME': '',
-        }
+        labels={'NAME': '',}
     )
     fig.update_yaxes(autorange="reversed")
     fig.update_xaxes(
