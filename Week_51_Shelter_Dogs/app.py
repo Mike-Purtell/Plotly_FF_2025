@@ -267,6 +267,7 @@ dcc_select_contact_state = (
         options=['ALL'] + contact_states, # menu choices  
         value='ALL', # initial value              
         clearable=True, searchable=True, multi=True, closeOnSelect=False,
+        style={'fontSize': '18px'},
         id='id_select_contact_state'
     )
 )
@@ -276,6 +277,7 @@ dcc_select_animal_age = (
         options=['ALL'] + animal_age_list, # menu choices  
         value='ALL', # initial value              
         clearable=True, searchable=True, multi=True, closeOnSelect=False,
+        style={'fontSize': '18px'},
         id='id_select_animal_age'
     )
 )
@@ -285,6 +287,7 @@ dcc_select_primary_breed = (
         options=['ALL'] + primary_breeds, # menu choices  
         value='ALL', # initial value              
         clearable=True, searchable=True, multi=True, closeOnSelect=False,
+        style={'fontSize': '18px'},
         id='id_select_primary_breed'
     )
 )
@@ -296,6 +299,7 @@ dcc_select_dog_name = (
         options=['ALL'] + dog_name_list, # menu choices  
         value='ALL', # initial value              
         clearable=True, searchable=True, multi=True, closeOnSelect=False,
+        style={'fontSize': '18px'},
         id='id_select_dog_name'
     )
 )
