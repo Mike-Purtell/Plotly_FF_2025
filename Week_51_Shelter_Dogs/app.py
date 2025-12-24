@@ -1,6 +1,7 @@
 import polars as pl
 import os
 import plotly.express as px
+import plotly.graph_objects as go
 from dash import Dash, dcc, html, Input, Output
 import dash_mantine_components as dmc
 import dash_ag_grid as dag
@@ -10,11 +11,9 @@ root_file = 'allDogDescriptions'
 style_horizontal_thick_line = {'border': 'none', 'height': '4px', 
     'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
     'margin': '10px,', 'fontsize': 32}
-
 style_horizontal_thin_line = {'border': 'none', 'height': '2px', 
     'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
     'margin': '10px,', 'fontsize': 12}
-
 style_h2 = {'text-align': 'center', 'font-size': '40px', 
             'fontFamily': 'Arial','font-weight': 'bold', 'color': 'gray'}
 style_h3 = {'text-align': 'center', 'font-size': '24px', 
@@ -30,7 +29,6 @@ def get_card(card_title, card_info):
         card_info = f'{card_info:,}'
     if card_info == '':
         card_info = 'N/A'
-
     card = dmc.Card(
         dmc.Stack([
             html.Div(style={
@@ -96,11 +94,29 @@ def get_timeline_plot(df_filtered):
         x='DATE', 
         y='Dog Count',
         title='Dog Postings Over Time',
-        subtitle='Grouped by Month',        
         labels={'DATE': 'Month', 'Dog Count': 'Number of Dogs Posted'},
         markers=True
     )
     fig.update_layout(template='plotly_white', yaxis_type='log')
+    # Extract last timeline point as Python scalars (Polars -> Python)
+    last_date = df_time.select(pl.col('DATE').last()).item()
+    last_count = int(df_time.select(pl.col('Dog Count').last()).item())
+
+    # Add a marker + label using Plotly Graph Objects
+    fig.add_trace(
+        go.Scatter(
+            x=[last_date],
+            y=[last_count],
+            mode='markers+text',
+            text=[f'{last_count:,}  '],
+            textposition='middle left',
+            textfont=dict(size=16, color='blue'),
+            marker=dict(size=8, color='gray'),
+            hoverinfo='skip',
+            showlegend=False,
+            name=''
+        )
+    )
     return fig
 
 def get_top_age_group(df):
@@ -168,7 +184,6 @@ def get_choropleth(df_filtered):
 
 #----- LOAD AND CLEAN DATA -----------------------------------------------------
 root_file = 'allDogDescriptions'
-#  if False: # use this during development to force re-reading CSV
 if os.path.exists(root_file + '.parquet'):
     print(f'{"*"*20} Reading {root_file}.parquet  {"*"*20}')
     df = pl.read_parquet(root_file + '.parquet')
@@ -235,7 +250,6 @@ dcc_select_animal_age = (
         id='id_select_animal_age'
     )
 )
-
 dcc_select_primary_breed = (
     dcc.Dropdown(
         placeholder='Select Primary Breed(s)', 
@@ -388,6 +402,5 @@ def callback(selected_states, selected_animal_age, selected_primary_breed, selec
         get_dog_name_pareto(df_filtered, 'Female'),
         get_dog_name_pareto(df_filtered, 'Male')
     )
-
 if __name__ == '__main__':
     app.run(debug=True)
