@@ -162,8 +162,8 @@ def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
     using_focus_countries = any([code_1, code_2, code_3])
     print(f'Using focus countries: {using_focus_countries}')
     if using_focus_countries:
-        fig.update_traces(line=dict(color='lightgray')) # , width=1, opacity=0.5))
-        fig.update_layout(showlegend=False)
+        fig.update_traces(line=dict(color='lightgray'), showlegend=False)
+        fig.update_layout(showlegend=True, legend_title_text='Focus Country')
         marker_size = 6
         line_width = 3
         if code_1:
@@ -177,6 +177,7 @@ def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
                     line=dict(width=line_width, color='red', dash='solid'),
                     mode='lines+markers',
                     showlegend=True,
+                    hoverlabel=dict(bgcolor='red'),
                 )
             ])
         if code_2:
@@ -189,10 +190,11 @@ def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
                     marker=dict(size=marker_size, color='blue'), # , symbol='circle'),
                     line=dict(width=line_width, color='blue', dash='solid'),
                     mode='lines+markers',
-                    # showlegend=True,
+                    showlegend=True,
+                    hoverlabel=dict(bgcolor='blue'),
                 )
             ])
-            if code_3:
+        if code_3:
                 print(f'Adding country 3: {code_3}')
                 fig.add_traces([
                     go.Scattergl(
@@ -202,7 +204,8 @@ def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
                         marker=dict(size=marker_size, color='green'),  # , symbol='circle'),
                         line=dict(width=line_width, color='green', dash='solid'),
                         mode='lines+markers',
-                        # showlegend=True,
+                        showlegend=True,
+                        hoverlabel=dict(bgcolor='green'),
                     )
                 ])
 
@@ -297,7 +300,7 @@ def get_country_code(country_name: str) -> str:
         df_country_codes
         .filter(pl.col('COUNTRY_NAME') == country_name)
         .select('COUNTRY_CODE')
-        .item()
+        .item(0, 'COUNTRY_CODE')
     )
     return code
 
@@ -307,7 +310,7 @@ def get_country_name(country_code: str) -> str:
         df_country_codes
         .filter(pl.col('COUNTRY_CODE') == country_code)
         .select('COUNTRY_NAME')
-        .item()
+        .item(0, 'COUNTRY_NAME')
     )
     return name
 
