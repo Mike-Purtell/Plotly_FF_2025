@@ -120,7 +120,8 @@ def normalize_year_range(selected_range, lo_bound, hi_bound):
         lo, hi = hi, lo
     return [lo, hi]
 
-def get_timeline_plot(df, plot_type):
+def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
+    ''' Generate timeline plot based on filtered dataframe and plot type '''
 
     if plot_type == 'Raw Data':
         pass  # should be no action needed, use df as is
@@ -152,9 +153,62 @@ def get_timeline_plot(df, plot_type):
         x='YEAR', 
         y=y_cols,
         markers=False,
-        title='Life Expectancy by Country'
+        title='Life Expectancy by Country',
+        # color='COLOR',
+        # color_discrete_map={'gray': 'lightgray'}
     )
-    fig.update_layout(template='plotly_white')
+    fig.update_layout(template='plotly_white', height=900)
+    
+    using_focus_countries = any([code_1, code_2, code_3])
+    print(f'Using focus countries: {using_focus_countries}')
+    if using_focus_countries:
+        fig.update_traces(line=dict(color='lightgray')) # , width=1, opacity=0.5))
+        fig.update_layout(showlegend=False)
+        marker_size = 6
+        line_width = 3
+        if code_1:
+            print(f'Adding country 1: {code_1}')
+            fig.add_traces([
+                go.Scattergl(
+                    x=df['YEAR'],
+                    y=df[code_1],
+                    name=get_country_name(code_1),
+                    marker=dict(size=marker_size, color='red'),  # , symbol='circle'),
+                    line=dict(width=line_width, color='red', dash='solid'),
+                    mode='lines+markers',
+                    showlegend=True,
+                )
+            ])
+        if code_2:
+            print(f'Adding country 2: {code_2}')
+            fig.add_traces([
+                go.Scattergl(
+                    x=df['YEAR'],
+                    y=df[code_2],
+                    name=get_country_name(code_2),
+                    marker=dict(size=marker_size, color='blue'), # , symbol='circle'),
+                    line=dict(width=line_width, color='blue', dash='solid'),
+                    mode='lines+markers',
+                    # showlegend=True,
+                )
+            ])
+            if code_3:
+                print(f'Adding country 3: {code_3}')
+                fig.add_traces([
+                    go.Scattergl(
+                        x=df['YEAR'],
+                        y=df[code_3],
+                        name=get_country_name(code_3),
+                        marker=dict(size=marker_size, color='green'),  # , symbol='circle'),
+                        line=dict(width=line_width, color='green', dash='solid'),
+                        mode='lines+markers',
+                        # showlegend=True,
+                    )
+                ])
+
+
+
+
     # # Extract last timeline point as Python scalars (Polars -> Python)
     # last_date = df_time.select(pl.col('DATE').last()).item()
     # last_count = int(df_time.select(pl.col('Dog Count').last()).item())
@@ -237,6 +291,26 @@ def get_choropleth(df_filtered):
     fig.update_layout(template='plotly_white')  
     return fig
 
+def get_country_code(country_name: str) -> str:
+    ''' Return country code for given country name '''
+    code = (
+        df_country_codes
+        .filter(pl.col('COUNTRY_NAME') == country_name)
+        .select('COUNTRY_CODE')
+        .item()
+    )
+    return code
+
+def get_country_name(country_code: str) -> str:
+    ''' Return country name for given country code '''
+    name = (
+        df_country_codes
+        .filter(pl.col('COUNTRY_CODE') == country_code)
+        .select('COUNTRY_NAME')
+        .item()
+    )
+    return name
+
 #----- LOAD AND CLEAN DATA -----------------------------------------------------
 # if os.path.exists(root_file + '.parquet'):
 if False: # re-generates parquet from CSV
@@ -279,19 +353,11 @@ country_codes = list(df_country_codes['COUNTRY_CODE'])
 year_min = int(df_transposed['YEAR'].min())
 year_max = int(df_transposed['YEAR'].max())
 
-# contact_states = sorted(df.unique('CONTACT_STATE')['CONTACT_STATE'].to_list())
-# primary_breeds = sorted(df.unique('BREED_PRIMARY')['BREED_PRIMARY'].to_list())
-# animal_age_list = ['Baby', 'Young', 'Adult','Senior']
-# dog_name_list = sorted(df.unique('NAME')['NAME'].to_list())
-
 #----- DASH COMPONENTS------ ---------------------------------------------------
 dcc_plot_type = (
-    dcc.Dropdown(
-        placeholder='Select Plot Type(s)', 
-        options=plot_types, # menu choices  
-        value=plot_types[0], # initial value              
-        clearable=True, searchable=True, multi=False, closeOnSelect=False,
-        style={'fontSize': '18px'},
+    dmc.RadioGroup(
+        children=dmc.Stack([dmc.Radio(label=pt, value=pt) for pt in plot_types]),
+        value=plot_types[0],
         id='id_select_plot_type'
     )
 )
@@ -307,6 +373,36 @@ dmc_year_range_slider = (
             for y in range(year_min, year_max + 1) 
             if y % 5 == 0
         ],
+    )
+)
+dcc_select_country_1 = (
+    dcc.Dropdown(
+        placeholder='Select Country(ies)', 
+        options=['SKIP'] + country_names, # menu choices  
+        value='SKIP', # initial value              
+        #clearable=True, searchable=True, multi=True, closeOnSelect=False,
+        style={'fontSize': '18px', 'color': 'black'},
+        id='id_select_country_1'
+    )
+)
+dcc_select_country_2 = (
+    dcc.Dropdown(
+        placeholder='Select Country(ies)', 
+        options=['SKIP'] + country_names, # menu choices  
+        value='SKIP', # initial value              
+        #clearable=True, searchable=True, multi=True, closeOnSelect=False,
+        style={'fontSize': '18px', 'color': 'black'},
+        id='id_select_country_2'
+    )
+)
+dcc_select_country_3 = (
+    dcc.Dropdown(
+        placeholder='Select Country(ies)', 
+        options=['SKIP'] + country_names, # menu choices  
+        value='SKIP', # initial value       
+        #clearable=True, searchable=True, multi=True, closeOnSelect=False,
+        style={'fontSize': '18px', 'color': 'black'},
+        id='id_select_country_3'
     )
 )
 # dcc_select_animal_age = (
@@ -367,17 +463,29 @@ app.layout =  dmc.MantineProvider([
     html.Hr(style=style_horizontal_thick_line),
     dmc.Space(h=30),
     dmc.Grid(children =  [
-        dmc.GridCol(dmc.Text('Select Plot Type', ta='left'), span=2, offset=2),
-        dmc.GridCol(dmc.Text('Select Year Range', ta='left'), span=6, offset=0),
+        dmc.GridCol(dmc.Text('Select Plot Type', ta='left'), span=2, offset=1),
+        dmc.GridCol(dmc.Text('Select Year Range', ta='left'), span=6, offset=1),
     ]),
     dmc.Space(h=10),
     dmc.Grid(
         children = [  
-            dmc.GridCol(dcc_plot_type, span=2, offset=2),
-            dmc.GridCol(dmc_year_range_slider, span=6, offset=0),
+            dmc.GridCol(dcc_plot_type, span=2, offset=1),
+            dmc.GridCol(dmc_year_range_slider, span=6, offset=1),
         ],
     ),
     dmc.Space(h=30),
+        dmc.Grid(children =  [
+        dmc.GridCol(dmc.Text('Focus Country 1', ta='left'), span=2, offset=4),
+        dmc.GridCol(dmc.Text('Focus Country 2', ta='left'), span=2, offset=0),
+        dmc.GridCol(dmc.Text('Focus Country 3', ta='left'), span=2, offset=0),
+    ]),
+    dmc.Grid(
+        children = [  
+            dmc.GridCol(dcc_select_country_1, span=2, offset=4),
+            dmc.GridCol(dcc_select_country_2, span=2, offset=0),
+            dmc.GridCol(dcc_select_country_3, span=2, offset=0),
+        ],
+    ),
     # dmc.Grid(children = [      # Summary cards row (responsive spans)
     #     dmc.GridCol(stat_card('Dog Count', '', id_prefix='dog-count'), span=dmc_card_span, offset=1),
     #     dmc.GridCol(stat_card('Top Age Group', '', id_prefix='top-age-group'), span=dmc_card_span),
@@ -421,18 +529,28 @@ app.layout =  dmc.MantineProvider([
     Output('timeline_plot', 'figure'),
     Input('id_select_plot_type', 'value'),
     Input('id_year_range_slider', 'value'),
-    # Input('id_select_primary_breed', 'value'),
-    # Input('id_select_dog_name', 'value')
+    Input('id_select_country_1', 'value'),
+    Input('id_select_country_2', 'value'),
+    Input('id_select_country_3', 'value'),
     )
-def callback(selected_plot_type, year_range ):
+def callback(selected_plot_type, year_range, country_1, country_2, country_3):
     print(f'Plot Type selected: {selected_plot_type}')
     print(f'Year Range selected: {year_range}')
+    code_1 = get_country_code(country_1) if country_1 != 'SKIP' else None
+    code_2 = get_country_code(country_2) if country_2 != 'SKIP' else None
+    code_3 = get_country_code(country_3) if country_3 != 'SKIP' else None
+
+    print(f'Focus Country 1: {country_1} { code_1}')
+    print(f'Focus Country 2: {country_2} { code_2}')
+    print(f'Focus Country 3: {country_3} { code_3}')
+
     df = (
         df_transposed
         .filter(pl.col('YEAR').is_between(year_range[0], year_range[1]))
     )
     print(df)
-    timeline_plot=get_timeline_plot(df, selected_plot_type)
+    timeline_plot=get_timeline_plot(
+        df, selected_plot_type, code_1, code_2, code_3)
     return timeline_plot
 
     
