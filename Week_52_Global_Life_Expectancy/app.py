@@ -25,115 +25,25 @@ style_card = {'text-align': 'center', 'font-size': '20px',
 dmc_card_span = {"base": 12, "sm": 6, "md": 2}
 dmc_card_span = {"base": 12, "sm": 6, "md": 2}
 #-----  FUNCTIONS --------------------------------------------------------------
-def stat_card(title, value, id_prefix=None):
-    '''Accessible, responsive stat card.
-    title: label shown at top-left
-    value: initial value string (can be empty, will show N/A)
-    id_prefix: sets the value text id as f'{id_prefix}-info' to match callbacks
-    '''
-    value_txt = (
-        f'{value:,}' if isinstance(value, (int, float)) 
-        else (value if value not in (None, '') else 'N/A')
-    )
-    value_id = f'{id_prefix}-info' if id_prefix else None
-
-    header = dmc.Group(
-        justify='space-between',
-        align='flex-start',
-        children=[
-            dmc.Text(title, size='xl', fw=600, c='dimmed'),
-        ]
-    )
-
-    # Right-side content stack (title + value)
-    content_stack = dmc.Stack([
-        header,
-        dmc.Space(h=4),
-        dmc.Text(
-            value_txt, 
-            id=value_id, 
-            size='xl', 
-            style={'lineHeight': '1.1', 'color': 'blue'}
-        ),
-    ], gap=0)
-
-    # Left vertical accent bar
-    accent_bar = html.Div(style={
-        'width': '15px',
-        'borderRadius': '4px',
-        'background': 'repeating-linear-gradient(to bottom, #666666, #999999, #666666)'
-    })
-
-    # Row layout with accent bar + content
-    row = html.Div([
-        accent_bar,
-        html.Div(content_stack, style={'flex': '1 1 auto'})
-    ], style={'display': 'flex', 'gap': '12px', 'alignItems': 'stretch'})
-
-    return dmc.Card(
-        withBorder=True,
-        shadow='sm',
-        radius='md',
-        padding='md',
-        **{'aria-label': f'{title} statistic'},
-        children=row
-    )
-
-def normalize_selection(selected_value, all_values_list):
-    ''' Normalize dropdown/multiselect to handle ALL and ensure list type
-    Input Args:
-        selected_value: from dropdown/multiselect (can be string, list, or None)
-        all_values_list: list of all possible values
-    Returns:
-        A list of selected values with 'ALL' properly handled
-    '''
-    # Handle None or empty list
-    if selected_value is None or selected_value == []:
-        return all_values_list
-    
-    # Handle 'ALL' as a string or as the only member of a list
-    if selected_value == 'ALL' or selected_value == ['ALL']:
-        return all_values_list
-    
-    # Handle list with 'ALL' in it
-    if isinstance(selected_value, list):
-        if 'ALL' in selected_value:
-            # If list has ALL and other items, remove ALL
-            filtered = [s for s in selected_value if s != 'ALL']
-            return filtered if filtered else all_values_list
-        return selected_value
-    
-    # Handle single string value
-    return [selected_value]
-
-
-def normalize_year_range(selected_range, lo_bound, hi_bound):
-    # Ensure the slider values stay within bounds and are integers
-    if not selected_range or len(selected_range) != 2:
-        return [lo_bound, hi_bound]
-    lo, hi = selected_range
-    lo = int(round(lo))
-    hi = int(round(hi))
-    lo = max(lo_bound, lo)
-    hi = min(hi_bound, hi)
-    if lo > hi:
-        lo, hi = hi, lo
-    return [lo, hi]
 
 def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
     ''' Generate timeline plot based on filtered dataframe and plot type '''
-
+    
+    marker_size = 5
+    line_width = 1
+    y_axis_label = '' # initialize
     if plot_type == 'Raw Data':
-        pass  # should be no action needed, use df as is
+        y_axis_label = 'Life Expectancy (Years)'
 
     elif plot_type == 'Norm Data':
         df = ( 
             df        
             .select(
                 'YEAR',
-                (cs.all().exclude('YEAR')-cs.all().exclude('YEAR').first()).name.suffix('_NORM')
+                (cs.all().exclude('YEAR')-cs.all().exclude('YEAR').first()), # .name.suffix('_NORM')
             )
         )
+        y_axis_label = 'Cumulative Change (Years)'
   
     elif plot_type == 'PCT Change':
         df = ( 
@@ -146,153 +56,265 @@ def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
                 )
             )
         )
+        y_axis_label = 'Cumulative Change (%)'
 
     y_cols = [c for c in df.columns if c != 'YEAR']
-    fig = px.line(
-        df,
-        x='YEAR', 
-        y=y_cols,
-        markers=False,
-        title='Life Expectancy by Country',
-        # color='COLOR',
-        # color_discrete_map={'gray': 'lightgray'}
+    first_year = df['YEAR'].min()
+    last_year = df['YEAR'].max()
+    # Create figure with go.Scatter for each country
+    import random
+    fig = go.Figure()
+    for col in y_cols:
+        random_color = f'rgb({random.randint(0,255)},{random.randint(0,255)},{random.randint(0,255)})'
+        fig.add_trace(
+            go.Scatter(
+                x=df['YEAR'],
+                y=df[col],
+                name=col,
+                mode='lines+markers',
+                line=dict(color=random_color,width=line_width),
+                marker=dict(size=marker_size, color=random_color),
+                zorder=0,
+            )
+        )
+    fig.update_layout(
+        title=f'Life Expectancy by Country, {first_year} to {last_year}',
+        template='simple_white',
     )
-    fig.update_layout(template='plotly_white', height=900)
     
     using_focus_countries = any([code_1, code_2, code_3])
-    print(f'Using focus countries: {using_focus_countries}')
     if using_focus_countries:
-        fig.update_traces(line=dict(color='lightgray'), showlegend=False)
-        fig.update_layout(showlegend=True, legend_title_text='Focus Country')
-        marker_size = 6
-        line_width = 3
+        # when focus countries are selected, gray out/de-emphasize all others
+        print(f'Using focus countries: {using_focus_countries}')
+        fig.update_traces(
+            mode='lines',
+            line=dict(color='lightgray'), 
+            showlegend=False,
+            hoverinfo='none',
+            # hoverinfo=None, hover_label=None,
+        )
+        fig.update_layout(
+            showlegend=True, 
+            legend_title_text='Focus Country',
+            hovermode='x unified',
+            legend=dict(
+                orientation='h',
+                yanchor='bottom',
+                y=1.02,
+                xanchor='center',
+                x=0.5
+            ),
+        )
+        # marker_size = 10
+        # line_width = 2
         if code_1:
             print(f'Adding country 1: {code_1}')
             fig.add_traces([
-                go.Scattergl(
+                go.Scatter(
                     x=df['YEAR'],
                     y=df[code_1],
                     name=get_country_name(code_1),
-                    marker=dict(size=marker_size, color='red'),  # , symbol='circle'),
+                    marker=dict(size=marker_size, color='red'),
                     line=dict(width=line_width, color='red', dash='solid'),
                     mode='lines+markers',
                     showlegend=True,
-                    hoverlabel=dict(bgcolor='red'),
-                )
+                    zorder=1,
+                ),
             ])
         if code_2:
             print(f'Adding country 2: {code_2}')
             fig.add_traces([
-                go.Scattergl(
+                go.Scatter(
                     x=df['YEAR'],
                     y=df[code_2],
                     name=get_country_name(code_2),
-                    marker=dict(size=marker_size, color='blue'), # , symbol='circle'),
+                    marker=dict(size=marker_size, color='blue'),
                     line=dict(width=line_width, color='blue', dash='solid'),
                     mode='lines+markers',
                     showlegend=True,
-                    hoverlabel=dict(bgcolor='blue'),
-                )
+                    zorder=1
+                ),
             ])
         if code_3:
-                print(f'Adding country 3: {code_3}')
-                fig.add_traces([
-                    go.Scattergl(
-                        x=df['YEAR'],
-                        y=df[code_3],
-                        name=get_country_name(code_3),
-                        marker=dict(size=marker_size, color='green'),  # , symbol='circle'),
-                        line=dict(width=line_width, color='green', dash='solid'),
-                        mode='lines+markers',
-                        showlegend=True,
-                        hoverlabel=dict(bgcolor='green'),
-                    )
-                ])
+            print(f'Adding country 3: {code_3}')
+            fig.add_traces([
+                go.Scatter(
+                    x=df['YEAR'],
+                    y=df[code_3],
+                    name=get_country_name(code_3),
+                    marker=dict(size=marker_size, color='green'),  
+                    line=dict(width=line_width, color='green', dash='solid'),
+                    mode='lines+markers',
+                    showlegend=True,
+                    zorder=1
+                ),
+            ])
 
-
-
-
-    # # Extract last timeline point as Python scalars (Polars -> Python)
-    # last_date = df_time.select(pl.col('DATE').last()).item()
-    # last_count = int(df_time.select(pl.col('Dog Count').last()).item())
-
-    # Add a marker + label using Plotly Graph Objects
-    # fig.add_trace(
-    #     go.Scatter(
-    #         x=[last_date],
-    #         y=[last_count],
-    #         mode='markers+text',
-    #         text=[f'{last_count:,}  '],
-    #         textposition='middle left',
-    #         textfont=dict(size=16, color='blue'),
-    #         marker=dict(size=8, color='gray'),
-    #         hoverinfo='skip',
-    #         showlegend=False,
-    #         name=''
-    #     )
-    # )
-    return fig
-
-def get_top_age_group(df):
-    if df.height:
-        return(
-            df.get_column('AGE')
-            .value_counts()
-            .sort('count', descending=True)
-            .item(0, 'AGE')
-        )
-    else:
-        return('N/A')
-
-def get_dog_name_pareto(df, gender):
-    df_gender = (
-        df
-        .filter(pl.col('SEX') == gender)
-        .group_by('NAME')
-        .agg(NAME_COUNT = pl.col('ID').len())
-        .select('NAME', 'NAME_COUNT')
-        .sort('NAME_COUNT', descending=True)
-    )
-    if len(df_gender) > 10:
-        df_gender = df_gender.head(10)
-
-    fig = px.bar(
-        df_gender, # .sort('NAME_COUNT'),
-        y='NAME',
-        x='NAME_COUNT',
-        orientation='h',
-        template='simple_white',
-        title=f'Top 10 {gender} dog names',
-        text=df_gender['NAME_COUNT'],
-        labels={'NAME': '',}
-    )
-    fig.update_yaxes(autorange="reversed")
     fig.update_xaxes(
-        showticklabels=False,
+        showticklabels=True,
         ticks='',
-        showline=False,
-        title_text=''
+        showline=True,
+        title_text='',
+        showgrid=True,
+    )
+    fig.update_yaxes(
+        showticklabels=True,
+        ticks='',
+        showline=True,
+        title_text=y_axis_label
     )
     return fig
 
-def get_choropleth(df_filtered):
-    # Create a choropleth map of dog counts by state
-    df_state = (
-        df_filtered
-        .group_by('CONTACT_STATE')
-        .agg(pl.col('ID').count().alias('Dog Count'))
+def get_histogram(df) -> go.Figure:
+    ''' Generate histogram of life expectancy '''
+    df_melt = (
+        df
+        .with_columns(DECADE=(pl.col('YEAR').cast(pl.Utf8).str.slice(0, 3) + '0s'))
+        .unpivot(on=cs.all().exclude(['YEAR', 'DECADE']),index='DECADE')
     )
-    fig = px.choropleth(
-        df_state,
-        locations='CONTACT_STATE',
-        locationmode='USA-states',
-        color='Dog Count',
-        scope='usa',
-        title='Dog Counts by State',
-        labels={'CONTACT_STATE': 'State', 'Dog Count': 'Number of Dogs'}
+    print('df_melt: ', df_melt)
+
+    # Create figure with go.Histogram for each decade
+    fig = go.Figure()
+    decades = sorted(df_melt['DECADE'].unique().to_list())
+    first_decade = decades[0]
+    last_decade = decades[-1]
+    # Define consistent bin edges for all histograms
+    bin_start = 20
+    bin_end = 95
+    bin_size = (bin_end - bin_start) / 25
+    for decade in decades:
+        df_decade = df_melt.filter(pl.col('DECADE') == decade)
+        fig.add_trace(
+            go.Histogram(
+                x=df_decade['value'],
+                name=decade,
+                xbins=dict(start=bin_start, end=bin_end, size=bin_size),
+            )
+        )
+    fig.update_layout(
+        title=f'Life Expectancy by Decade, {first_decade} to {last_decade}',
+        xaxis_title='Life Expectancy (Years)',
+        template='simple_white',
+        barmode='stack',
+        bargap=0.1,
     )
-    fig.update_layout(template='plotly_white')  
+    fig.update_traces(opacity=0.5)
+    fig.update_xaxes(
+        showticklabels=True,
+        ticks='',
+        showline=True,
+        title_text='',
+        showgrid=True,
+        range=[20, 90]
+    )
     return fig
+
+def get_boxplot(df) -> go.Figure:
+    ''' Generate boxplot of life expectancy '''
+    df_melt = (
+        df
+        .with_columns(DECADE=(pl.col('YEAR').cast(pl.Utf8).str.slice(0, 3) + '0s'))
+        .unpivot(on=cs.all().exclude(['YEAR', 'DECADE']),index='DECADE')
+    )
+    print('df_melt: ', df_melt)
+
+    # Create figure 
+    fig = go.Figure()
+    decades = sorted(df_melt['DECADE'].unique().to_list())
+    first_decade = decades[0]
+    last_decade = decades[-1]
+    # Define consistent bin edges for all histograms
+    for decade in decades:
+        df_decade = df_melt.filter(pl.col('DECADE') == decade)
+        fig.add_trace(
+            go.Box(
+                y=df_decade['value'],
+                name=decade,
+                hoverinfo='name+y',
+                hovertemplate='%{name}<br>Median: %{median:.1f}<extra></extra>',
+            )
+        )
+    fig.update_layout(
+        title=f'Life Expectancy by Decade, {first_decade} to {last_decade}',
+        yaxis_title='Life Expectancy (Years)',
+        template='simple_white',
+    )
+    fig.update_yaxes(
+        showticklabels=True,
+        ticks='',
+        showline=True,
+        title_text='',
+        showgrid=True,
+        range=[20, 90]
+    )
+    return fig
+
+
+def get_choropleth(df) -> go.Figure:
+    ''' Generate choropleth of median by country '''
+    first_year = df['YEAR'].min()
+    last_year = df['YEAR'].max()
+    fig = go.Figure()
+    print('choropleth df:')
+    print(df)
+    df_transposed = (
+        df
+        .with_columns(pl.col('YEAR').cast(pl.String))
+        .transpose(
+            include_header=True, 
+            column_names='YEAR', 
+        )
+        .with_columns(
+            MEAN = pl.mean_horizontal(cs.float())
+        )
+        .select(
+            COUNTRY_CODE = pl.col('column'),
+            MEAN = pl.col('MEAN')
+        )
+        .join(
+            df_country_codes, on='COUNTRY_CODE', how='left'
+        )
+    )
+    print('choropleth df_transposed:')
+    print(df_transposed)
+
+    map_projections = ['equirectangular', 'mercator', 'orthographic', 
+        'natural earth', 'kavrayskiy7', 'miller', 'robinson', 'eckert4',
+        'azimuthal equal area', 'azimuthal equidistant', 'conic equal area', 
+        'conic conformal', 'conic equidistant', 'gnomonic', 'stereographic', 
+        'mollweide', 'hammer', 'transverse mercator', 'albers usa', 
+        'winkel tripel', 'aitoff'
+    ]
+
+    my_map_projection = 'winkel tripel'
+    print(f'{len(map_projections)} map projections available.   ')
+    print(f'Using map projection: {my_map_projection}')
+    # Short list of projections I like for this app:
+    my_fav_projections = ['orthographic', 'natural earth', 'kavrayskiy7',
+        'eckert4','mollweide'
+        ]
+        
+    fig = px.choropleth(
+        df_transposed, 
+        locations="COUNTRY_CODE",
+        color="MEAN", 
+        hover_name="COUNTRY_CODE", # column to add to hover information
+        color_continuous_scale=px.colors.sequential.Plasma,
+        custom_data=['COUNTRY_CODE', 'COUNTRY_NAME', 'MEAN'],
+        title=f'Average Life Expectancy by Country, {first_year} to {last_year}',
+        projection=my_map_projection,
+        )
+    
+    fig.update_traces(
+        hovertemplate=(
+            '<b>%{customdata[0]}</b><br>' +   
+            '<b>%{customdata[1]}</b><br>' +   
+            '%{customdata[2]:.1f} years<extra></extra>'
+        )
+    )  
+    return fig
+
 
 def get_country_code(country_name: str) -> str:
     ''' Return country code for given country name '''
@@ -315,8 +337,8 @@ def get_country_name(country_code: str) -> str:
     return name
 
 #----- LOAD AND CLEAN DATA -----------------------------------------------------
-# if os.path.exists(root_file + '.parquet'):
-if False: # re-generates parquet from CSV
+if os.path.exists(root_file + '.parquet'):
+# if False: # re-generates parquet from CSV
     print(f'{"*"*20} Reading {root_file}.parquet  {"*"*20}')
     df = pl.read_parquet(root_file + '.parquet')
   
@@ -329,11 +351,10 @@ else:
         .sort('COUNTRY_CODE')
     )
     df.write_parquet(root_file + '.parquet')
+
 df_country_codes = (  # use in a join to map country codes to names
     df.select(cs.starts_with('COUNTRY_'))
 )
-
-print(df.shape)
 df_transposed = (
     df
     .drop('COUNTRY_NAME')
@@ -345,9 +366,6 @@ df_transposed = (
     .with_columns(YEAR = pl.col('YEAR').cast(pl.UInt16))
     .with_columns(cs.all().exclude('YEAR').cast(pl.Float32))
     )
-print(df_transposed.shape)
-print(df_country_codes.shape)
-
 
 #----- GLOBAL LISTS ------------------------------------------------------------
 plot_types = ['Raw Data', 'Norm Data', 'PCT Change']
@@ -383,7 +401,6 @@ dcc_select_country_1 = (
         placeholder='Select Country(ies)', 
         options=['SKIP'] + country_names, # menu choices  
         value='SKIP', # initial value              
-        #clearable=True, searchable=True, multi=True, closeOnSelect=False,
         style={'fontSize': '18px', 'color': 'black'},
         id='id_select_country_1'
     )
@@ -393,7 +410,6 @@ dcc_select_country_2 = (
         placeholder='Select Country(ies)', 
         options=['SKIP'] + country_names, # menu choices  
         value='SKIP', # initial value              
-        #clearable=True, searchable=True, multi=True, closeOnSelect=False,
         style={'fontSize': '18px', 'color': 'black'},
         id='id_select_country_2'
     )
@@ -403,58 +419,10 @@ dcc_select_country_3 = (
         placeholder='Select Country(ies)', 
         options=['SKIP'] + country_names, # menu choices  
         value='SKIP', # initial value       
-        #clearable=True, searchable=True, multi=True, closeOnSelect=False,
         style={'fontSize': '18px', 'color': 'black'},
         id='id_select_country_3'
     )
 )
-# dcc_select_animal_age = (
-#     dcc.Dropdown(
-#         placeholder='Select Animal Age(s)', 
-#         options=['ALL'] + animal_age_list, # menu choices  
-#         value='ALL', # initial value              
-#         clearable=True, searchable=True, multi=True, closeOnSelect=False,
-#         style={'fontSize': '18px'},
-#         id='id_select_animal_age'
-#     )
-# )
-# dcc_select_primary_breed = (
-#     dcc.Dropdown(
-#         placeholder='Select Primary Breed(s)', 
-#         options=['ALL'] + primary_breeds, # menu choices  
-#         value='ALL', # initial value              
-#         clearable=True, searchable=True, multi=True, closeOnSelect=False,
-#         style={'fontSize': '18px'},
-#         id='id_select_primary_breed'
-#     )
-# )
-
-# # Dash Core Dropdown for dog name selection
-# dcc_select_dog_name = (
-#     dcc.Dropdown(
-#         placeholder='Select Dog Names', 
-#         options=['ALL'] + dog_name_list, # menu choices  
-#         value='ALL', # initial value              
-#         clearable=True, searchable=True, multi=True, closeOnSelect=False,
-#         style={'fontSize': '18px'},
-#         id='id_select_dog_name'
-#     )
-# )
-
-# # Dash AG Grid Table for full df
-# def get_ag_grid_table(df):
-#     # Build columnDefs without floatingFilter
-#     column_defs = []
-#     for col in df.columns:
-#         col_def = {"headerName": col, "field": col, "floatingFilter": True}
-#         column_defs.append(col_def)
-#     return dag.AgGrid(
-#         id="ag-table-full-df",
-#         columnDefs=column_defs,
-#         rowData=df.to_dicts(),
-#         defaultColDef={"filter": True, "sortable": True, "resizable": True},
-#         style={"height": "500px", "width": "100%"}
-#     )
 #----- DASH APPLICATION STRUCTURE ----------------------------------------------
 
 app = Dash()
@@ -466,8 +434,8 @@ app.layout =  dmc.MantineProvider([
     html.Hr(style=style_horizontal_thick_line),
     dmc.Space(h=30),
     dmc.Grid(children =  [
-        dmc.GridCol(dmc.Text('Select Plot Type', ta='left'), span=2, offset=1),
-        dmc.GridCol(dmc.Text('Select Year Range', ta='left'), span=6, offset=1),
+        dmc.GridCol(dmc.Text('Scatter Plot Source', ta='left'), span=2, offset=1),
+        dmc.GridCol(dmc.Text('Range Slider - Year', ta='left'), span=6, offset=1),
     ]),
     dmc.Space(h=10),
     dmc.Grid(
@@ -478,58 +446,31 @@ app.layout =  dmc.MantineProvider([
     ),
     dmc.Space(h=30),
         dmc.Grid(children =  [
-        dmc.GridCol(dmc.Text('Focus Country 1', ta='left'), span=2, offset=4),
+        dmc.GridCol(dmc.Text('Focus Country 1', ta='left'), span=2, offset=1),
         dmc.GridCol(dmc.Text('Focus Country 2', ta='left'), span=2, offset=0),
         dmc.GridCol(dmc.Text('Focus Country 3', ta='left'), span=2, offset=0),
     ]),
     dmc.Grid(
         children = [  
-            dmc.GridCol(dcc_select_country_1, span=2, offset=4),
+            dmc.GridCol(dcc_select_country_1, span=2, offset=1),
             dmc.GridCol(dcc_select_country_2, span=2, offset=0),
             dmc.GridCol(dcc_select_country_3, span=2, offset=0),
         ],
     ),
-    # dmc.Grid(children = [      # Summary cards row (responsive spans)
-    #     dmc.GridCol(stat_card('Dog Count', '', id_prefix='dog-count'), span=dmc_card_span, offset=1),
-    #     dmc.GridCol(stat_card('Top Age Group', '', id_prefix='top-age-group'), span=dmc_card_span),
-    #     dmc.GridCol(stat_card('Fixed', '', id_prefix='fixed'), span=dmc_card_span),
-    #     dmc.GridCol(stat_card('Shots Current', '', id_prefix='shots-current'), span=dmc_card_span),
-    #     dmc.GridCol(stat_card('Organizations', '', id_prefix='organizations'), span=dmc_card_span),
-    # ]),
-    # dmc.Space(h=30),
-    # html.Hr(style=style_horizontal_thin_line),
-    #     dmc.Grid(children =  [
-    #     dmc.GridCol(dmc.Text('Visualizations filtered by the selections above.', 
-    #         ta='center'), span=10, offset=1),
-    # ]),
     dmc.Grid(children = [
-        dmc.GridCol(dcc.Graph(id='timeline_plot'), span=10,offset=1), 
-        # dmc.GridCol(dcc.Graph(id='choropleth-map'), span=5, offset=1),           
+        dmc.GridCol(dcc.Graph(id='timeline_plot'), span=5,offset=1), 
+        dmc.GridCol(dcc.Graph(id='choropleth'), span=5, offset=1),     
     ]),
-    # dmc.Grid(children = [
-    #     dmc.GridCol(dcc.Graph(id='pareto-female'), span=5, offset=1),    
-    #     dmc.GridCol(dcc.Graph(id='pareto-male'), span=5, offset=1),      
-    # ]),
-    # html.Hr(style=style_horizontal_thin_line),
-    #     dmc.Grid(children =  [
-    #     dmc.GridCol(dmc.Text('Raw data table with floating filters', 
-    #         ta='center'), span=10, offset=1),
-    # ]),
-    # dmc.Grid(children = [
-    #     dmc.GridCol(get_ag_grid_table(df), span=10, offset=1),        
-    # ]),
-
+    dmc.Grid(children = [
+        dmc.GridCol(dcc.Graph(id='histogram'), span=5, offset=1),  
+        dmc.GridCol(dcc.Graph(id='boxplot'), span=5,offset=1), 
+    ]),
 ])
 @app.callback(
-    # Output('dog-count-info', 'children'),
-    # Output('top-age-group-info', 'children'),
-    # Output('fixed-info', 'children'),
-    # Output('shots-current-info', 'children'),
-    # Output('organizations-info', 'children'),
-    # Output('timeline-plot', 'figure'), 
-    # Output('choropleth-map', 'figure'),  
-    # Output('pareto-female', 'figure'),  
     Output('timeline_plot', 'figure'),
+    Output('histogram', 'figure'),
+    Output('boxplot', 'figure'),
+    Output('choropleth', 'figure'),
     Input('id_select_plot_type', 'value'),
     Input('id_year_range_slider', 'value'),
     Input('id_select_country_1', 'value'),
@@ -537,50 +478,19 @@ app.layout =  dmc.MantineProvider([
     Input('id_select_country_3', 'value'),
     )
 def callback(selected_plot_type, year_range, country_1, country_2, country_3):
-    print(f'Plot Type selected: {selected_plot_type}')
-    print(f'Year Range selected: {year_range}')
     code_1 = get_country_code(country_1) if country_1 != 'SKIP' else None
     code_2 = get_country_code(country_2) if country_2 != 'SKIP' else None
     code_3 = get_country_code(country_3) if country_3 != 'SKIP' else None
-
-    print(f'Focus Country 1: {country_1} { code_1}')
-    print(f'Focus Country 2: {country_2} { code_2}')
-    print(f'Focus Country 3: {country_3} { code_3}')
-
     df = (
         df_transposed
         .filter(pl.col('YEAR').is_between(year_range[0], year_range[1]))
     )
-    print(df)
     timeline_plot=get_timeline_plot(
         df, selected_plot_type, code_1, code_2, code_3)
-    return timeline_plot
+    histogram = get_histogram(df)
+    boxplot = get_boxplot(df)
+    choropleth = get_choropleth(df)
+    return timeline_plot, histogram, boxplot, choropleth
 
-    
-    # # Filter dataframe based on selections
-    # df_filtered = ( df
-    #     .filter(pl.col('CONTACT_STATE').is_in(selected_states))
-    #     .filter(pl.col('AGE').is_in(selected_animal_age))
-    #     .filter(pl.col('BREED_PRIMARY').is_in(selected_primary_breed))
-    #     .filter(pl.col('NAME').is_in(selected_dog_name))
-    # )
-    # dog_count = df_filtered.height
-    # top_age_group = get_top_age_group(df_filtered)
-    # fixed_count = df_filtered.filter(pl.col('FIXED')).height
-    # fixed_pct = round(100 * fixed_count / dog_count, 1) if dog_count else 0.0
-    # shots_count = df_filtered.filter(pl.col('SHOTS_CURRENT')).height
-    # shots_pct = round(100 * shots_count / dog_count, 1) if dog_count else 0.0 
-    # org_count = df_filtered.select(pl.col('ORG_ID')).unique().height
-    # return (
-    #     f'{dog_count:,}',
-    #     top_age_group,
-    #     f'{fixed_count:,} ({fixed_pct}%)',
-    #     f'{shots_count:,} ({shots_pct}%)',
-    #     f'{org_count:,}',
-    #     get_timeline_plot(df_filtered),
-    #     get_choropleth(df_filtered),
-    #     get_dog_name_pareto(df_filtered, 'Female'),
-    #     get_dog_name_pareto(df_filtered, 'Male')
-    # )
 if __name__ == '__main__':
     app.run(debug=True)
