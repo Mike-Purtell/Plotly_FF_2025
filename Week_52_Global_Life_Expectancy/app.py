@@ -16,14 +16,7 @@ style_horizontal_thin_line = {'border': 'none', 'height': '2px',
     'margin': '10px,', 'fontsize': 12}
 style_h2 = {'text-align': 'center', 'font-size': '40px', 
             'fontFamily': 'Arial','font-weight': 'bold', 'color': 'gray'}
-style_h3 = {'text-align': 'center', 'font-size': '24px', 
-            'fontFamily': 'Arial','font-weight': 'normal', 'color': 'gray'}
-style_card = {'text-align': 'center', 'font-size': '20px', 
-            'fontFamily': 'Arial','font-weight': 'normal'}
 
-# Responsive grid span for stat cards
-dmc_card_span = {"base": 12, "sm": 6, "md": 2}
-dmc_card_span = {"base": 12, "sm": 6, "md": 2}
 #-----  FUNCTIONS --------------------------------------------------------------
 
 def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
@@ -34,7 +27,6 @@ def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
     y_axis_label = '' # initialize
     if plot_type == 'Raw Data':
         y_axis_label = 'Life Expectancy (Years)'
-
     elif plot_type == 'Norm Data':
         df = ( 
             df        
@@ -44,7 +36,6 @@ def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
             )
         )
         y_axis_label = 'Cumulative Change (Years)'
-  
     elif plot_type == 'PCT Change':
         df = ( 
             df   
@@ -78,7 +69,7 @@ def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
             )
         )
     fig.update_layout(
-        title=f'Life Expectancy by Country, {first_year} to {last_year}',
+        title=f'Life Expectancy Timeline by Country, {first_year} to {last_year}',
         template='simple_white',
     )
     
@@ -172,7 +163,6 @@ def get_histogram(df) -> go.Figure:
         .with_columns(DECADE=(pl.col('YEAR').cast(pl.Utf8).str.slice(0, 3) + '0s'))
         .unpivot(on=cs.all().exclude(['YEAR', 'DECADE']),index='DECADE')
     )
-    print('df_melt: ', df_melt)
 
     # Create figure with go.Histogram for each decade
     fig = go.Figure()
@@ -217,7 +207,6 @@ def get_boxplot(df) -> go.Figure:
         .with_columns(DECADE=(pl.col('YEAR').cast(pl.Utf8).str.slice(0, 3) + '0s'))
         .unpivot(on=cs.all().exclude(['YEAR', 'DECADE']),index='DECADE')
     )
-    print('df_melt: ', df_melt)
 
     # Create figure 
     fig = go.Figure()
@@ -227,12 +216,25 @@ def get_boxplot(df) -> go.Figure:
     # Define consistent bin edges for all histograms
     for decade in decades:
         df_decade = df_melt.filter(pl.col('DECADE') == decade)
+        values = df_decade['value'].drop_nulls()
+        median_val = values.median() if len(values) > 0 else 0
         fig.add_trace(
             go.Box(
                 y=df_decade['value'],
                 name=decade,
-                hoverinfo='name+y',
-                hovertemplate='%{name}<br>Median: %{median:.1f}<extra></extra>',
+                hoverinfo='skip',
+                boxmean=True,
+            )
+        )
+        # Add invisible scatter for custom hover showing only median
+        fig.add_trace(
+            go.Scatter(
+                x=[decade],
+                y=[median_val],
+                mode='markers',
+                marker=dict(size=0.1, opacity=0),
+                showlegend=False,
+                hovertemplate=f'{decade}<br>Median: {median_val:.1f}<extra></extra>',
             )
         )
     fig.update_layout(
@@ -256,8 +258,6 @@ def get_choropleth(df) -> go.Figure:
     first_year = df['YEAR'].min()
     last_year = df['YEAR'].max()
     fig = go.Figure()
-    print('choropleth df:')
-    print(df)
     df_transposed = (
         df
         .with_columns(pl.col('YEAR').cast(pl.String))
@@ -276,8 +276,6 @@ def get_choropleth(df) -> go.Figure:
             df_country_codes, on='COUNTRY_CODE', how='left'
         )
     )
-    print('choropleth df_transposed:')
-    print(df_transposed)
 
     map_projections = ['equirectangular', 'mercator', 'orthographic', 
         'natural earth', 'kavrayskiy7', 'miller', 'robinson', 'eckert4',
@@ -288,13 +286,8 @@ def get_choropleth(df) -> go.Figure:
     ]
 
     my_map_projection = 'winkel tripel'
-    print(f'{len(map_projections)} map projections available.   ')
     print(f'Using map projection: {my_map_projection}')
-    # Short list of projections I like for this app:
-    my_fav_projections = ['orthographic', 'natural earth', 'kavrayskiy7',
-        'eckert4','mollweide'
-        ]
-        
+    
     fig = px.choropleth(
         df_transposed, 
         locations="COUNTRY_CODE",
@@ -434,8 +427,11 @@ app.layout =  dmc.MantineProvider([
     html.Hr(style=style_horizontal_thick_line),
     dmc.Space(h=30),
     dmc.Grid(children =  [
-        dmc.GridCol(dmc.Text('Scatter Plot Source', ta='left'), span=2, offset=1),
-        dmc.GridCol(dmc.Text('Range Slider - Year', ta='left'), span=6, offset=1),
+        dmc.GridCol(dmc.Text('Timeline Source Data', ta='left'), span=2, offset=1),
+        dmc.GridCol(dmc.Text(
+            'Year Range Slider - Filters all visualizations', ta='left'), 
+            span=6, offset=1
+        ),
     ]),
     dmc.Space(h=10),
     dmc.Grid(
@@ -446,9 +442,9 @@ app.layout =  dmc.MantineProvider([
     ),
     dmc.Space(h=30),
         dmc.Grid(children =  [
-        dmc.GridCol(dmc.Text('Focus Country 1', ta='left'), span=2, offset=1),
-        dmc.GridCol(dmc.Text('Focus Country 2', ta='left'), span=2, offset=0),
-        dmc.GridCol(dmc.Text('Focus Country 3', ta='left'), span=2, offset=0),
+        dmc.GridCol(dmc.Text('Timeline Focus Country 1', ta='left'), span=2, offset=1),
+        dmc.GridCol(dmc.Text('Timeline Focus Country 2', ta='left'), span=2, offset=0),
+        dmc.GridCol(dmc.Text('Timeline Focus Country 3', ta='left'), span=2, offset=0),
     ]),
     dmc.Grid(
         children = [  
