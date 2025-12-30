@@ -7,12 +7,13 @@ countries and decades.
 Features:
 - Timeline plot showing life expectancy trends by country
   (raw, normalized, or % change)
-- Focus country highlighting with up to 3 countries
+- Focus country highlighting for up to 4 countries
 - Stacked histogram showing distribution by decade
 - Box plot comparing decades
 - Choropleth map showing average life expectancy by country
 - Pareto charts displaying top/bottom N countries ranked by average
   life expectancy, with lollipop-style markers and horizontal orientation
+- Range slider for filtering data by year range
 
 Data Source: World Bank life expectancy at birth dataset
 Date: December 2025
@@ -45,13 +46,16 @@ style_horizontal_thin_line = {'border': 'none', 'height': '2px',
 # Title text style
 style_h2 = {'text-align': 'center', 'font-size': '40px', 
             'fontFamily': 'Arial','font-weight': 'bold', 'color': 'gray'}
+style_h3 = {'text-align': 'center', 'font-size': '16px', 
+            'fontFamily': 'Arial','font-weight': 'normal', 'color': 'gray'}
 plotly_template = 'simple_white'  # Consistent Plotly template  
 
+color_palette = px.colors.qualitative.Dark24  # Color palette for timeline traces`
 
 #-----  VISUALIZATION FUNCTIONS ------------------------------------------------
 # Each function generates a specific Plotly figure for the dashboard
 
-def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
+def get_timeline_plot(df, plot_type, focus_country_codes) -> go.Figure:
     '''
     Generate a multi-line timeline plot showing life expectancy over time.
     
@@ -95,8 +99,7 @@ def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
     first_year = df['YEAR'].min()
     last_year = df['YEAR'].max()
 
-    # Deterministic color palette (Alphabet has 26 colors)
-    color_palette = px.colors.qualitative.Alphabet
+
     # Create figure with go.Scatter for each country
     fig = go.Figure()
     for i, col in enumerate(y_cols):
@@ -117,75 +120,42 @@ def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
         template=plotly_template,
     )
     
-    using_focus_countries = any([code_1, code_2, code_3])
-    if using_focus_countries:
+    if any(focus_country_codes):
         # when focus countries are selected, gray out/de-emphasize all others
-        print(f'Using focus countries: {using_focus_countries}')
         fig.update_traces(
             mode='lines',
             line=dict(color='lightgray'), 
             showlegend=False,
             hoverinfo='none',
-            # hoverinfo=None, hover_label=None,
         )
         fig.update_layout(
             showlegend=True, 
-            legend_title_text='Focus Country',
+            legend_title_text='Focus Countries',
             hovermode='x unified',
             legend=dict(
                 orientation='h',
-                yanchor='bottom',
-                y=1.02,
+                yanchor='top',
+                y=-0.2,
                 xanchor='center',
                 x=0.5
             ),
         )
-        if code_1:
-            print(f'Adding country 1: {code_1}')
+        # Add highlighted traces for each focus country
+        for i, code in enumerate(focus_country_codes):
+            my_color = color_palette[i % len(color_palette)]
             fig.add_traces([
                 go.Scatter(
                     x=df['YEAR'],
-                    y=df[code_1],
-                    name=get_country_name(code_1),
-                    marker=dict(size=marker_size, color='red'),
-                    line=dict(width=line_width, color='red', dash='solid'),
+                    y=df[code],
+                    name=get_country_name(code),
+                    marker=dict(size=marker_size, color=my_color),
+                    line=dict(width=line_width, color=my_color, dash='solid'),
                     mode='lines+markers',
                     showlegend=True,
                     zorder=1,
                     hovertemplate='%{fullData.name}: %{y:.1f}<extra></extra>',
                 ),
             ])
-        if code_2:
-            print(f'Adding country 2: {code_2}')
-            fig.add_traces([
-                go.Scatter(
-                    x=df['YEAR'],
-                    y=df[code_2],
-                    name=get_country_name(code_2),
-                    marker=dict(size=marker_size, color='blue'),
-                    line=dict(width=line_width, color='blue', dash='solid'),
-                    mode='lines+markers',
-                    showlegend=True,
-                    zorder=1,
-                    hovertemplate='%{fullData.name}: %{y:.1f}<extra></extra>',
-                ),
-            ])
-        if code_3:
-            print(f'Adding country 3: {code_3}')
-            fig.add_traces([
-                go.Scatter(
-                    x=df['YEAR'],
-                    y=df[code_3],
-                    name=get_country_name(code_3),
-                    marker=dict(size=marker_size, color='green'),  
-                    line=dict(width=line_width, color='green', dash='solid'),
-                    mode='lines+markers',
-                    showlegend=True,
-                    zorder=1,
-                    hovertemplate='%{fullData.name}: %{y:.1f}<extra></extra>',
-                ),
-            ])
-
     fig.update_xaxes(
         showticklabels=True,
         ticks='',
@@ -248,9 +218,9 @@ def get_histogram(df) -> go.Figure:
         showticklabels=True,
         ticks='',
         showline=True,
-        title_text='',
+        title_text='Life Expectancy (Years)',
         showgrid=True,
-        range=[20, 90]
+        range=[20, 90],
     )
     return fig
 
@@ -294,9 +264,9 @@ def get_boxplot(df) -> go.Figure:
         showticklabels=True,
         ticks='',
         showline=True,
-        title_text='',
         showgrid=True,
-        range=[20, 90]
+        range=[20, 90],
+        title_text='Life Expectancy (Years)',
     )
     return fig
 
@@ -416,12 +386,16 @@ def get_pareto(df, category: str, top_n: int) -> go.Figure:
         marker=dict(size=10, color='blue'),
         line=dict(color='lightgray', width=2),
     )  
-    fig.update_layout(
-        yaxis_title='Mean Life Expectancy (Years)',
-    )
-    pareto_min= df_pareto['MEAN'].min()
-    pareto_max= df_pareto['MEAN'].max()
-    pareto_margin = 0.05*(pareto_max - pareto_min)
+    fig.update_layout(yaxis_title='Mean Life Expectancy (Years)')
+
+    pareto_min = df_pareto['MEAN'].min()
+    pareto_max = df_pareto['MEAN'].max()
+    pareto_margin = 0.05 * (pareto_max - pareto_min)
+    
+    # Calculate 6 evenly-spaced tick positions
+    tick_step = (pareto_max - pareto_min) / 5  # 5 intervals for 6 ticks
+    tick_vals = [pareto_min + i * tick_step for i in range(6)]
+    
     if category == 'TOP':
         fig.update_xaxes(range=
             [pareto_max + pareto_margin, pareto_min - 8*pareto_margin]
@@ -440,6 +414,10 @@ def get_pareto(df, category: str, top_n: int) -> go.Figure:
     )
     fig.update_xaxes(
         showgrid=True,
+        tickmode='array',
+        tickvals=tick_vals,
+        tickformat='.1f',
+        title_text='Avg. Life Expectancy (Years)',
     )
     
     return fig
@@ -509,8 +487,8 @@ df_transposed = (
 #----- GLOBAL LISTS ------------------------------------------------------------
 
 plot_types = ['Raw Data', 'Norm Data', 'PCT Change']  # Timeline view options
-country_names = sorted(df_country_codes.unique('COUNTRY_NAME')['COUNTRY_NAME'].to_list())  # Dropdown options
-country_codes = list(df_country_codes['COUNTRY_CODE'])
+all_country_names = sorted(df_country_codes.unique('COUNTRY_NAME')['COUNTRY_NAME'].to_list())  # Dropdown options
+all_country_codes = list(df_country_codes['COUNTRY_CODE'])
 year_min = int(df_transposed['YEAR'].min())  # Slider bounds
 year_max = int(df_transposed['YEAR'].max())
 
@@ -542,70 +520,57 @@ dmc_year_range_slider = (
     )
 )
 
-# Focus country dropdowns (3 slots for highlighting specific countries)
-dcc_select_country_1 = (
+# Focus country dropdowns (pick up to 5 countries to highlight on timeline)
+dcc_focus_countries = (
     dcc.Dropdown(
         placeholder='Select Country', 
-        options=['SKIP'] + country_names,  # 'SKIP' = no selection
-        value='Afghanistan',  # Default selection
+        options=[{'label': name, 'value': name} for name in all_country_names],
+        value=['Afghanistan','Canada', 'Bangladesh'],  # Default selection
         style={'fontSize': '18px', 'color': 'black'},
-        id='id_select_country_1'
+        id='id_focus_countries',multi=True
     )
 )
-dcc_select_country_2 = (
-    dcc.Dropdown(
-        placeholder='Select Country', 
-        options=['SKIP'] + country_names,
-        value='Switzerland',
-        style={'fontSize': '18px', 'color': 'black'},
-        id='id_select_country_2'
-    )
-)
-dcc_select_country_3 = (
-    dcc.Dropdown(
-        placeholder='Select Country', 
-        options=['SKIP'] + country_names,
-        value='Bangladesh',
-        style={'fontSize': '18px', 'color': 'black'},
-        id='id_select_country_3'
-    )
-)
+
 #----- DASH APPLICATION STRUCTURE ----------------------------------------------
 # Main application layout using Dash Mantine Components grid system
-
+app_banner='Global Life Expectancy'
+app_sub_banner = (
+    'An interactive Dash application visualizing worldwide life expectancy ' +
+     ' Data Source: World Bank'
+)
 app = Dash()
 server = app.server  # For deployment (e.g., Gunicorn)
 app.layout = dmc.MantineProvider([
     html.Hr(style=style_horizontal_thick_line),
-    dmc.Text('Global Life Expectancy', ta='center', style=style_h2),
-    dmc.Space(h=30),
+    dmc.Text(app_banner, ta='center', style=style_h2),
+    dmc.Space(h=10),
+    dmc.Text(app_sub_banner, ta='center', style=style_h3),
     html.Hr(style=style_horizontal_thick_line),
     dmc.Space(h=30),
     dmc.Grid(children =  [
-        dmc.GridCol(dmc.Text('Timeline Source Data', ta='left'), span=2, offset=1),
+        dmc.GridCol(dmc.Text('Timeline Source Data', ta='left'), span=2, offset=0),
         dmc.GridCol(dmc.Text(
             'Year Range Slider - Filters all visualizations', ta='left'), 
-            span=6, offset=1
+            span=6, offset=2
         ),
     ]),
     dmc.Space(h=10),
     dmc.Grid(
         children = [  
-            dmc.GridCol(dcc_plot_type, span=2, offset=1),
-            dmc.GridCol(dmc_year_range_slider, span=6, offset=1),
+            dmc.GridCol(dcc_plot_type, span=2, offset=0),
+            dmc.GridCol(dmc_year_range_slider, span=6, offset=2),
         ],
     ),
     dmc.Space(h=30),
         dmc.Grid(children =  [
-        dmc.GridCol(dmc.Text('Timeline Focus Country 1', ta='left'), span=2, offset=1),
-        dmc.GridCol(dmc.Text('Timeline Focus Country 2', ta='left'), span=2, offset=0),
-        dmc.GridCol(dmc.Text('Timeline Focus Country 3', ta='left'), span=2, offset=0),
+            dmc.GridCol(
+                dmc.Text('Timeline Focus Countries, pick up to 5', ta='left'), 
+                span=2, offset=0
+                ),
     ]),
     dmc.Grid(
         children = [  
-            dmc.GridCol(dcc_select_country_1, span=2, offset=1),
-            dmc.GridCol(dcc_select_country_2, span=2, offset=0),
-            dmc.GridCol(dcc_select_country_3, span=2, offset=0),
+            dmc.GridCol(dcc_focus_countries, span=4, offset=0),
         ],
     ),
     dmc.Grid(children = [
@@ -621,7 +586,7 @@ app.layout = dmc.MantineProvider([
 ])
 
 #----- CALLBACK ----------------------------------------------------------------
-# Main callback: updates all 4 visualizations when any input changes
+# Main callback: updates all visualizations when any input changes
 
 @app.callback(
     Output('timeline_plot', 'figure'),
@@ -630,19 +595,23 @@ app.layout = dmc.MantineProvider([
     Output('choropleth', 'figure'),
     Output('highest-10-expectancy', 'figure'),
     Output('lowest-10-expectancy', 'figure'),
+    Output('id_focus_countries', 'value'),
     Input('id_select_plot_type', 'value'),
     Input('id_year_range_slider', 'value'),
-    Input('id_select_country_1', 'value'),
-    Input('id_select_country_2', 'value'),
-    Input('id_select_country_3', 'value'),
+    Input('id_focus_countries', 'value'),
 )
-def callback(selected_plot_type, year_range, country_1, country_2, country_3):
+def callback(selected_plot_type, year_range, focus_countries):
     '''Main callback: filter data and regenerate all figures.'''
-    # Convert country names to codes (or None if 'SKIP')
-    code_1 = get_country_code(country_1) if country_1 != 'SKIP' else None
-    code_2 = get_country_code(country_2) if country_2 != 'SKIP' else None
-    code_3 = get_country_code(country_3) if country_3 != 'SKIP' else None
-    
+
+    max_selections = 5
+    if focus_countries and len(focus_countries) > max_selections:
+        focus_countries = focus_countries[:max_selections]
+
+    focus_country_codes = [
+        get_country_code(country) for country in focus_countries]
+  
+    print(f'focus_country_codes: {focus_country_codes}')
+
     # Filter data by selected year range
     df = (
         df_transposed
@@ -650,14 +619,16 @@ def callback(selected_plot_type, year_range, country_1, country_2, country_3):
     )
     
     # Generate all visualizations
-    timeline_plot = get_timeline_plot(df, selected_plot_type, code_1, code_2, code_3)
+    timeline_plot = get_timeline_plot(df, selected_plot_type,  focus_country_codes)
+
     histogram = get_histogram(df)
     boxplot = get_boxplot(df)
     choropleth = get_choropleth(df)
     top_10 = get_pareto(df, 'TOP', 10) 
     bottom_10 = get_pareto(df, 'BOTTOM', 10)
     
-    return timeline_plot, histogram, boxplot, choropleth, top_10, bottom_10
+    return (timeline_plot, histogram, boxplot, choropleth, 
+        top_10, bottom_10, focus_countries)
 
 
 #----- MAIN --------------------------------------------------------------------
