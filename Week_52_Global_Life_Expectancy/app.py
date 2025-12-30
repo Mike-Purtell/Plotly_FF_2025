@@ -1,14 +1,18 @@
-""" 
+"""
 Global Life Expectancy Dashboard
 ================================
-An interactive Dash application visualizing life expectancy data across countries and decades.
+An interactive Dash application visualizing life expectancy data across
+countries and decades.
 
 Features:
-- Timeline plot showing life expectancy trends by country (raw, normalized, or % change)
+- Timeline plot showing life expectancy trends by country
+  (raw, normalized, or % change)
 - Focus country highlighting with up to 3 countries
 - Stacked histogram showing distribution by decade
 - Box plot comparing decades
 - Choropleth map showing average life expectancy by country
+- Pareto charts displaying top/bottom N countries ranked by average
+  life expectancy, with lollipop-style markers and horizontal orientation
 
 Data Source: World Bank life expectancy at birth dataset
 Date: December 2025
@@ -28,10 +32,9 @@ from dash import Dash, dcc, html, Input, Output
 import dash_mantine_components as dmc
 
 #----- GLOBALS -----------------------------------------------------------------
-# CSS styles for consistent UI elements throughout the dashboard
 root_file = 'live_expectancy_at_birth'  # Base filename for data (CSV/parquet)
 
-# Decorative horizontal line styles (blue-to-orange gradient)
+# CSS styles for consistent UI elements throughout the dashboard
 style_horizontal_thick_line = {'border': 'none', 'height': '4px', 
     'background': 'linear-gradient(to right, #007bff, #ff7b00)', 
     'margin': '10px,', 'fontsize': 32}
@@ -349,7 +352,11 @@ def get_choropleth(df) -> go.Figure:
 
 def get_pareto(df, category: str, top_n: int) -> go.Figure:
     '''
+    Create a Pareto chart showing top or bottom countries by life expectancy.
 
+    Generates a horizontal lollipop chart ranking countries by their mean
+    life expectancy across all available years. Countries are sorted and
+    displayed with markers and connecting lines.
     '''
     first_year = df['YEAR'].min()
     last_year = df['YEAR'].max()
@@ -405,7 +412,6 @@ def get_pareto(df, category: str, top_n: int) -> go.Figure:
         ),
         mode='lines+markers+text',
         text=labels,                # Text labels for each point
-        # textposition='middle right',  # Position of text relative to markers
         textposition='top right',  # Position of text relative to markers
         marker=dict(size=10, color='blue'),
         line=dict(color='lightgray', width=2),
@@ -501,7 +507,6 @@ df_transposed = (
 )
 
 #----- GLOBAL LISTS ------------------------------------------------------------
-# Options and bounds derived from data, used by UI components
 
 plot_types = ['Raw Data', 'Norm Data', 'PCT Change']  # Timeline view options
 country_names = sorted(df_country_codes.unique('COUNTRY_NAME')['COUNTRY_NAME'].to_list())  # Dropdown options
