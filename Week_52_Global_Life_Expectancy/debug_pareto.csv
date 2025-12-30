@@ -23,7 +23,7 @@ BGD,57.877014,Bangladesh
 BGR,71.98651,Bulgaria
 BHR,71.60189,Bahrain
 BHS,70.22626,"Bahamas, The"
-BIH,70.53219,Bosnia and Herzegovina
+BIH,70.532196,Bosnia and Herzegovina
 BLR,70.59375,Belarus
 BLZ,67.59891,Belize
 BMU,74.871216,Bermuda
@@ -47,7 +47,7 @@ COG,57.08737,"Congo, Rep."
 COL,68.60787,Colombia
 COM,54.999046,Comoros
 CPV,64.51033,Cabo Verde
-CRI,74.35958,Costa Rica
+CRI,74.35957,Costa Rica
 CSS,67.23799,Caribbean small states
 CUB,73.26517,Cuba
 CUW,72.07605,Curacao
@@ -82,7 +82,7 @@ FSM,62.827374,"Micronesia, Fed. Sts."
 GAB,59.55447,Gabon
 GBR,76.20357,United Kingdom
 GEO,68.829056,Georgia
-GHA,55.371033,Ghana
+GHA,55.37103,Ghana
 GIB,77.15092,Gibraltar
 GIN,48.260513,Guinea
 GMB,51.2522,"Gambia, The"
@@ -99,7 +99,7 @@ HKG,77.45738,"Hong Kong SAR, China"
 HND,63.251328,Honduras
 HPC,51.33485,Heavily indebted poor countries (HIPC)
 HRV,72.55208,Croatia
-HTI,54.227737,Haiti
+HTI,54.227734,Haiti
 HUN,71.25418,Hungary
 IBD,64.47396,IBRD only
 IBT,62.262573,IDA & IBRD total
@@ -114,8 +114,8 @@ IRN,63.50608,"Iran, Islamic Rep."
 IRQ,63.180683,Iraq
 ISL,78.392235,Iceland
 ISR,77.140945,Israel
-ITA,77.02325,Italy
-JAM,69.8064,Jamaica
+ITA,77.023254,Italy
+JAM,69.80639,Jamaica
 JOR,68.428345,Jordan
 JPN,78.22428,Japan
 KAZ,64.77417,Kazakhstan
@@ -145,7 +145,7 @@ LTU,71.7901,Lithuania
 LUX,75.463326,Luxembourg
 LVA,70.77672,Latvia
 MAC,75.95713,"Macao SAR, China"
-MAF,74.79915,St. Martin (French part)
+MAF,74.79914,St. Martin (French part)
 MAR,61.076706,Morocco
 MCO,79.31645,Monaco
 MDA,66.37387,Moldova
@@ -197,7 +197,7 @@ PRY,67.54704,Paraguay
 PSE,71.80462,West Bank and Gaza
 PSS,64.286316,Pacific island small states
 PST,75.51988,Post-demographic dividend
-PYF,72.9744,French Polynesia
+PYF,72.97441,French Polynesia
 QAT,72.669754,Qatar
 ROU,70.59415,Romania
 RUS,68.24075,Russian Federation
@@ -211,7 +211,7 @@ SLB,63.632362,Solomon Islands
 SLE,45.4282,Sierra Leone
 SLV,61.341373,El Salvador
 SMR,78.890015,San Marino
-SOM,48.127457,"Somalia, Fed. Rep."
+SOM,48.127453,"Somalia, Fed. Rep."
 SRB,71.93209,Serbia
 SSA,51.141953,Sub-Saharan Africa (excluding high income)
 SSD,38.991047,South Sudan
@@ -220,7 +220,7 @@ SST,65.497154,Small states
 STP,60.064373,Sao Tome and Principe
 SUR,63.868294,Suriname
 SVK,72.638016,Slovak Republic
-SVN,74.15904,Slovenia
+SVN,74.15905,Slovenia
 SWE,78.09248,Sweden
 SWZ,53.498596,Eswatini
 SXM,72.73323,Sint Maarten (Dutch part)
@@ -255,7 +255,7 @@ VCT,68.18741,St. Vincent and the Grenadines
 VEN,69.332016,"Venezuela, RB"
 VGB,71.83817,British Virgin Islands
 VIR,71.923065,Virgin Islands (U.S.)
-VNM,67.29329,Viet Nam
+VNM,67.2933,Viet Nam
 VUT,63.9345,Vanuatu
 WLD,64.83061,World
 WSM,66.58342,Samoa
