@@ -42,6 +42,8 @@ style_horizontal_thin_line = {'border': 'none', 'height': '2px',
 # Title text style
 style_h2 = {'text-align': 'center', 'font-size': '40px', 
             'fontFamily': 'Arial','font-weight': 'bold', 'color': 'gray'}
+plotly_template = 'simple_white'  # Consistent Plotly template  
+
 
 #-----  VISUALIZATION FUNCTIONS ------------------------------------------------
 # Each function generates a specific Plotly figure for the dashboard
@@ -49,14 +51,6 @@ style_h2 = {'text-align': 'center', 'font-size': '40px',
 def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
     '''
     Generate a multi-line timeline plot showing life expectancy over time.
-    
-    Args:
-        df: Polars DataFrame with YEAR column and country code columns
-        plot_type: 'Raw Data', 'Norm Data', or 'PCT Change'
-        code_1, code_2, code_3: Optional country codes to highlight (or None)
-    
-    Returns:
-        Plotly Figure object
     
     When focus countries are selected, all other countries are grayed out
     and the focus countries are highlighted in red, blue, and green.
@@ -90,6 +84,7 @@ def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
                 / cs.all().exclude('YEAR').first()
                 )
             )
+            .with_columns(cs.all().exclude('YEAR') * 100)
         )
         y_axis_label = 'Cumulative Change (%)'
 
@@ -97,13 +92,8 @@ def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
     first_year = df['YEAR'].min()
     last_year = df['YEAR'].max()
 
-    # Deterministic color palette
-    color_palette = [
-        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
-        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
-        '#aec7e8', '#ffbb78', '#98df8a', '#ff9896', '#c5b0d5',
-        '#c49c94', '#f7b6d2', '#c7c7c7', '#dbdb8d', '#9edae5'
-    ]
+    # Deterministic color palette (Alphabet has 26 colors)
+    color_palette = px.colors.qualitative.Alphabet
     # Create figure with go.Scatter for each country
     fig = go.Figure()
     for i, col in enumerate(y_cols):
@@ -121,7 +111,7 @@ def get_timeline_plot(df, plot_type, code_1, code_2, code_3):
         )
     fig.update_layout(
         title=f'Life Expectancy Timeline by Country, {first_year} to {last_year}',
-        template='simple_white',
+        template=plotly_template,
     )
     
     using_focus_countries = any([code_1, code_2, code_3])
@@ -212,12 +202,6 @@ def get_histogram(df) -> go.Figure:
     '''
     Generate a stacked histogram showing life expectancy distribution by decade.
     
-    Args:
-        df: Polars DataFrame with YEAR column and country code columns
-    
-    Returns:
-        Plotly Figure with stacked histograms, one per decade
-    
     Data is unpivoted (melted) to create a long-format DataFrame with
     DECADE and value columns for histogram binning.
     '''
@@ -247,9 +231,12 @@ def get_histogram(df) -> go.Figure:
             )
         )
     fig.update_layout(
-        title=f'Life Expectancy by Decade, {first_decade} to {last_decade}',
+        title=dict(
+            text='Life Expectancy by Decade',
+            subtitle=dict(text=f'{first_decade} to {last_decade}'),
+        ),
         xaxis_title='Life Expectancy (Years)',
-        template='simple_white',
+        template=plotly_template,
         barmode='stack',
         bargap=0.1,
     )
@@ -268,13 +255,6 @@ def get_boxplot(df) -> go.Figure:
     '''
     Generate vertical box plots comparing life expectancy distribution by decade.
     
-    Args:
-        df: Polars DataFrame with YEAR column and country code columns
-    
-    Returns:
-        Plotly Figure with one box per decade, plus invisible scatter
-        points for custom median-only hover display
-    
     Box plots show median, quartiles, and outliers. Mean line is also displayed.
     '''
     # Reshape data: add DECADE column and unpivot country columns to rows
@@ -292,8 +272,6 @@ def get_boxplot(df) -> go.Figure:
     # Define consistent bin edges for all histograms
     for decade in decades:
         df_decade = df_melt.filter(pl.col('DECADE') == decade)
-        values = df_decade['value'].drop_nulls()
-        median_val = values.median() if len(values) > 0 else 0
         fig.add_trace(
             go.Box(
                 y=df_decade['value'],
@@ -302,9 +280,12 @@ def get_boxplot(df) -> go.Figure:
             )
         )
     fig.update_layout(
-        title=f'Life Expectancy by Decade, {first_decade} to {last_decade}',
+        title=dict(
+            text='Life Expectancy by Decade',
+            subtitle=dict(text=f'{first_decade} to {last_decade}'),
+        ),
         yaxis_title='Life Expectancy (Years)',
-        template='simple_white',
+        template=plotly_template,
     )
     fig.update_yaxes(
         showticklabels=True,
@@ -316,16 +297,9 @@ def get_boxplot(df) -> go.Figure:
     )
     return fig
 
-
 def get_choropleth(df) -> go.Figure:
     '''
     Generate a world choropleth map showing average life expectancy by country.
-    
-    Args:
-        df: Polars DataFrame with YEAR column and country code columns
-    
-    Returns:
-        Plotly Figure with choropleth map using Winkel Tripel projection
     
     Data is transposed back to country rows, then average life expectancy
     is calculated across all years for each country.
@@ -359,7 +333,8 @@ def get_choropleth(df) -> go.Figure:
         hover_name="COUNTRY_CODE", # column to add to hover information
         color_continuous_scale=px.colors.sequential.Plasma,
         custom_data=['COUNTRY_CODE', 'COUNTRY_NAME', 'MEAN'],
-        title=f'Average Life Expectancy by Country, {first_year} to {last_year}',
+        title='Average Life Expectancy by Country',
+        subtitle=f'{first_year} to {last_year}',
         projection='winkel tripel',
         )
     
@@ -370,6 +345,97 @@ def get_choropleth(df) -> go.Figure:
             '%{customdata[2]:.1f} years<extra></extra>'
         )
     )  
+    return fig
+
+def get_pareto(df, category: str, top_n: int) -> go.Figure:
+    '''
+
+    '''
+    first_year = df['YEAR'].min()
+    last_year = df['YEAR'].max()
+    fig = go.Figure()
+    df_transposed = (
+        df
+        .with_columns(pl.col('YEAR').cast(pl.String))
+        .transpose(
+            include_header=True, 
+            column_names='YEAR', 
+        )
+        .with_columns(
+            MEAN = pl.mean_horizontal(cs.float())
+        )
+        .select(
+            COUNTRY_CODE = pl.col('column'),
+            MEAN = pl.col('MEAN')
+        )
+        .join(
+            df_country_codes, on='COUNTRY_CODE', how='left'
+        )
+        .filter(pl.col('MEAN').is_not_null())
+    )
+    df_transposed.write_csv('debug_pareto.csv')  # Debug output
+    if category == 'TOP':
+        df_pareto = df_transposed.sort('MEAN', descending=True).head(top_n)
+    elif category == 'BOTTOM':
+        df_pareto = df_transposed.sort('MEAN', descending=False).head(top_n)
+    
+    # Get country names in reverse order for y-axis (so highest/lowest appears at top)
+    country_order = df_pareto['COUNTRY_NAME'].to_list()
+    
+    fig=px.scatter(
+        df_pareto,
+        y='COUNTRY_NAME',
+        x='MEAN',
+        template=plotly_template,
+        title=(
+            f'{"Top" if category=="TOP" else "Bottom"} ' +
+            f'{top_n} Countries by Average Life Expectancy'
+        ),
+        subtitle=f'{first_year} to {last_year}',
+        custom_data=['COUNTRY_CODE', 'COUNTRY_NAME', 'MEAN'],
+        category_orders={'COUNTRY_NAME': country_order},
+        text='COUNTRY_NAME',
+    )
+    labels = df_pareto['COUNTRY_NAME'].to_list()
+    fig.update_traces(
+        hovertemplate=(
+            '<b>%{customdata[0]}</b><br>' +   
+            '<b>%{customdata[1]}</b><br>' +   
+            '%{customdata[2]:.1f} years<extra></extra>'
+        ),
+        mode='lines+markers+text',
+        text=labels,                # Text labels for each point
+        # textposition='middle right',  # Position of text relative to markers
+        textposition='top right',  # Position of text relative to markers
+        marker=dict(size=10, color='blue'),
+        line=dict(color='lightgray', width=2),
+    )  
+    fig.update_layout(
+        yaxis_title='Mean Life Expectancy (Years)',
+    )
+    pareto_min= df_pareto['MEAN'].min()
+    pareto_max= df_pareto['MEAN'].max()
+    pareto_margin = 0.05*(pareto_max - pareto_min)
+    if category == 'TOP':
+        fig.update_xaxes(range=
+            [pareto_max + pareto_margin, pareto_min - 8*pareto_margin]
+        )
+    elif category == 'BOTTOM':
+        fig.update_xaxes(range=
+            [pareto_min - pareto_margin, pareto_max + 8*pareto_margin]
+        )
+    # hide y-axis(country name), since it's shown as a text label on each point
+    fig.update_yaxes(
+        showticklabels=False,
+        ticks='',
+        showline=False,
+        title_text='',
+        showgrid=False,
+    )
+    fig.update_xaxes(
+        showgrid=True,
+    )
+    
     return fig
 
 
@@ -476,7 +542,7 @@ dcc_select_country_1 = (
     dcc.Dropdown(
         placeholder='Select Country', 
         options=['SKIP'] + country_names,  # 'SKIP' = no selection
-        value='SKIP',
+        value='Afghanistan',  # Default selection
         style={'fontSize': '18px', 'color': 'black'},
         id='id_select_country_1'
     )
@@ -485,7 +551,7 @@ dcc_select_country_2 = (
     dcc.Dropdown(
         placeholder='Select Country', 
         options=['SKIP'] + country_names,
-        value='SKIP',
+        value='Switzerland',
         style={'fontSize': '18px', 'color': 'black'},
         id='id_select_country_2'
     )
@@ -494,7 +560,7 @@ dcc_select_country_3 = (
     dcc.Dropdown(
         placeholder='Select Country', 
         options=['SKIP'] + country_names,
-        value='SKIP',
+        value='Bangladesh',
         style={'fontSize': '18px', 'color': 'black'},
         id='id_select_country_3'
     )
@@ -538,12 +604,14 @@ app.layout = dmc.MantineProvider([
         ],
     ),
     dmc.Grid(children = [
-        dmc.GridCol(dcc.Graph(id='timeline_plot'), span=5,offset=1), 
-        dmc.GridCol(dcc.Graph(id='choropleth'), span=5, offset=1),     
+        dmc.GridCol(dcc.Graph(id='timeline_plot'), span=4,offset=0), 
+        dmc.GridCol(dcc.Graph(id='highest-10-expectancy'), span=4, offset=0),
+        dmc.GridCol(dcc.Graph(id='lowest-10-expectancy'), span=4, offset=0),      
     ]),
     dmc.Grid(children = [
-        dmc.GridCol(dcc.Graph(id='histogram'), span=5, offset=1),  
-        dmc.GridCol(dcc.Graph(id='boxplot'), span=5, offset=1), 
+        dmc.GridCol(dcc.Graph(id='choropleth'), span=4, offset=0), 
+        dmc.GridCol(dcc.Graph(id='histogram'), span=4, offset=0),  
+        dmc.GridCol(dcc.Graph(id='boxplot'), span=4, offset=0), 
     ]),
 ])
 
@@ -555,6 +623,8 @@ app.layout = dmc.MantineProvider([
     Output('histogram', 'figure'),
     Output('boxplot', 'figure'),
     Output('choropleth', 'figure'),
+    Output('highest-10-expectancy', 'figure'),
+    Output('lowest-10-expectancy', 'figure'),
     Input('id_select_plot_type', 'value'),
     Input('id_year_range_slider', 'value'),
     Input('id_select_country_1', 'value'),
@@ -579,8 +649,10 @@ def callback(selected_plot_type, year_range, country_1, country_2, country_3):
     histogram = get_histogram(df)
     boxplot = get_boxplot(df)
     choropleth = get_choropleth(df)
+    top_10 = get_pareto(df, 'TOP', 10) 
+    bottom_10 = get_pareto(df, 'BOTTOM', 10)
     
-    return timeline_plot, histogram, boxplot, choropleth
+    return timeline_plot, histogram, boxplot, choropleth, top_10, bottom_10
 
 
 #----- MAIN --------------------------------------------------------------------
