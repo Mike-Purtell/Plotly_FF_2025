@@ -557,7 +557,7 @@ app.layout = dmc.MantineProvider([
     dmc.Space(h=10),
     dmc.Grid(
         children = [  
-            dmc.GridCol(dcc_plot_type, span=2, offset=0),
+            dmc.GridCol(html.Div(dcc_plot_type), span=2, offset=0),
             dmc.GridCol(dmc_year_range_slider, span=6, offset=2),
         ],
     ),
@@ -570,7 +570,7 @@ app.layout = dmc.MantineProvider([
     ]),
     dmc.Grid(
         children = [  
-            dmc.GridCol(dcc_focus_countries, span=4, offset=0),
+            dmc.GridCol(html.Div(dcc_focus_countries), span=4, offset=0),
         ],
     ),
     dmc.Grid(children = [
