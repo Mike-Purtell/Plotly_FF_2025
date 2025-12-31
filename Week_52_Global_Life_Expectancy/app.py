@@ -320,7 +320,7 @@ def get_choropleth(df) -> go.Figure:
     )  
     return fig
 
-def get_pareto(df, category: str, top_n: int) -> go.Figure:
+def get_pareto(df, plot_type: str, category: str, top_n: int) -> go.Figure:
     '''
     Create a Pareto chart showing top or bottom countries by life expectancy.
 
@@ -338,38 +338,70 @@ def get_pareto(df, category: str, top_n: int) -> go.Figure:
             include_header=True, 
             column_names='YEAR', 
         )
-        .with_columns(
-            MEAN = pl.mean_horizontal(cs.float())
-        )
         .select(
             COUNTRY_CODE = pl.col('column'),
-            MEAN = pl.col('MEAN')
-        )
+            MEAN = pl.mean_horizontal(cs.float()),
+            GAIN = (
+                pl.concat_list(cs.float()).list.last() - 
+                pl.concat_list(cs.float()).list.first()
+            ),
+            PCT_GAIN = (
+                (pl.concat_list(cs.float()).list.last() - 
+                pl.concat_list(cs.float()).list.first()) /
+                pl.concat_list(cs.float()).list.first() * 100
+            ),
+        )      
         .join(
             df_country_codes, on='COUNTRY_CODE', how='left'
         )
+
         .filter(pl.col('MEAN').is_not_null())
+        .filter(pl.col('MEAN').is_not_null())
+        .filter(pl.col('PCT_GAIN').is_not_null())
     )
     df_transposed.write_csv('debug_pareto.csv')  # Debug output
-    if category == 'TOP':
-        df_pareto = df_transposed.sort('MEAN', descending=True).head(top_n)
-    elif category == 'BOTTOM':
-        df_pareto = df_transposed.sort('MEAN', descending=False).head(top_n)
+    if plot_type == 'Raw Data':
+        x_cat = 'MEAN'
+        my_title=(
+            f'{"Top" if category=="TOP" else "Bottom"} ' +
+            f'{top_n} Average Life Expectancies'
+        )
+        my_xaxis_title='Avg. Life Expectancy (Years)'
+    elif plot_type == 'Norm Data':
+        x_cat = 'GAIN'
+        my_title=(
+            f'{"Top" if category=="TOP" else "Bottom"} ' +
+            f'{top_n} Life Expectancy Gains (Years)'
+        )
+        my_xaxis_title='Life Expectancy Gains (Years)'
+    elif plot_type == 'PCT Change':
+        x_cat = 'PCT_GAIN'
+        my_title=(
+            f'{"Top" if category=="TOP" else "Bottom"} ' +
+            f'{top_n} Life Expectancy Gains (%)'
+        )
+        my_xaxis_title='Life Expectancy Gain (%)'
     
+
+    my_subtitle=f'{first_year} to {last_year}'
+
+    if category == 'TOP':
+        df_pareto = df_transposed.sort(x_cat, descending=True).head(top_n)
+    elif category == 'BOTTOM':
+        df_pareto = df_transposed.sort(x_cat, descending=False).head(top_n)
+
+
     # Get country names in reverse order for y-axis (so highest/lowest appears at top)
     country_order = df_pareto['COUNTRY_NAME'].to_list()
     
     fig=px.scatter(
         df_pareto,
         y='COUNTRY_NAME',
-        x='MEAN',
+        x=x_cat,
         template=plotly_template,
-        title=(
-            f'{"Top" if category=="TOP" else "Bottom"} ' +
-            f'{top_n} Countries by Average Life Expectancy'
-        ),
-        subtitle=f'{first_year} to {last_year}',
-        custom_data=['COUNTRY_CODE', 'COUNTRY_NAME', 'MEAN'],
+        title=my_title,
+        subtitle=my_subtitle,
+        custom_data=['COUNTRY_CODE', 'COUNTRY_NAME', 'MEAN', 'GAIN', 'PCT_GAIN'],
         category_orders={'COUNTRY_NAME': country_order},
         text='COUNTRY_NAME',
     )
@@ -377,8 +409,10 @@ def get_pareto(df, category: str, top_n: int) -> go.Figure:
     fig.update_traces(
         hovertemplate=(
             '<b>%{customdata[0]}</b><br>' +   
-            '<b>%{customdata[1]}</b><br>' +   
-            '%{customdata[2]:.1f} years<extra></extra>'
+            '<b>%{customdata[1]}</b><br><br>' +  
+            '<b>MEAN:</b>%{customdata[2]:.3f}<br>' +
+            '<b>GAIN:</b>%{customdata[3]:.3f}<br>' + 
+            '<b>PCT_GAIN:</b>%{customdata[4]:.1f} %<extra></extra>'
         ),
         mode='lines+markers+text',
         text=labels,                # Text labels for each point
@@ -386,10 +420,9 @@ def get_pareto(df, category: str, top_n: int) -> go.Figure:
         marker=dict(size=10, color='blue'),
         line=dict(color='lightgray', width=2),
     )  
-    fig.update_layout(yaxis_title='Mean Life Expectancy (Years)')
 
-    pareto_min = df_pareto['MEAN'].min()
-    pareto_max = df_pareto['MEAN'].max()
+    pareto_min = df_pareto[x_cat].min()
+    pareto_max = df_pareto[x_cat].max()
     pareto_margin = 0.05 * (pareto_max - pareto_min)
     
     # Calculate 6 evenly-spaced tick positions
@@ -417,7 +450,7 @@ def get_pareto(df, category: str, top_n: int) -> go.Figure:
         tickmode='array',
         tickvals=tick_vals,
         tickformat='.1f',
-        title_text='Avg. Life Expectancy (Years)',
+        title_text=my_xaxis_title,
     )
     
     return fig
@@ -548,7 +581,8 @@ app.layout = dmc.MantineProvider([
     html.Hr(style=style_horizontal_thick_line),
     dmc.Space(h=30),
     dmc.Grid(children =  [
-        dmc.GridCol(dmc.Text('Timeline Source Data', ta='left'), span=2, offset=0),
+        dmc.GridCol(
+            dmc.Text('Timeline, Pareto Data Type', ta='left'), span=2, offset=0),
         dmc.GridCol(dmc.Text(
             'Year Range Slider - Filters all visualizations', ta='left'), 
             span=6, offset=2
@@ -565,12 +599,13 @@ app.layout = dmc.MantineProvider([
         dmc.Grid(children =  [
             dmc.GridCol(
                 dmc.Text('Timeline Focus Countries, pick up to 5', ta='left'), 
-                span=2, offset=0
+                span=4, offset=0
                 ),
     ]),
     dmc.Grid(
         children = [  
             dmc.GridCol(html.Div(dcc_focus_countries), span=4, offset=0),
+            dmc.GridCol(dmc.Text('Pareto Graphs', ta='left'), span=4, offset=1),
         ],
     ),
     dmc.Grid(children = [
@@ -609,8 +644,6 @@ def callback(selected_plot_type, year_range, focus_countries):
 
     focus_country_codes = [
         get_country_code(country) for country in focus_countries]
-  
-    print(f'focus_country_codes: {focus_country_codes}')
 
     # Filter data by selected year range
     df = (
@@ -624,8 +657,8 @@ def callback(selected_plot_type, year_range, focus_countries):
     histogram = get_histogram(df)
     boxplot = get_boxplot(df)
     choropleth = get_choropleth(df)
-    top_10 = get_pareto(df, 'TOP', 10) 
-    bottom_10 = get_pareto(df, 'BOTTOM', 10)
+    top_10 = get_pareto(df, selected_plot_type, 'TOP', 10) 
+    bottom_10 = get_pareto(df, selected_plot_type, 'BOTTOM', 10)
     
     return (timeline_plot, histogram, boxplot, choropleth, 
         top_10, bottom_10, focus_countries)
